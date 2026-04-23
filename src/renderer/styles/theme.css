@@ -1,0 +1,622 @@
+:root {
+  --color-bg: #02060a;
+  --color-surface: rgba(8, 17, 29, 0.84);
+  --color-text: #f5f1e8;
+  --color-accent: #d7263d;
+  --color-border: rgba(255, 255, 255, 0.14);
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  overflow: hidden;
+}
+
+.menu-shell,
+.experience-shell {
+  position: relative;
+  min-height: 100%;
+}
+
+.menu-shell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  background:
+    radial-gradient(circle at top, rgba(255, 255, 255, 0.08), transparent 40%),
+    linear-gradient(180deg, #0a1523 0%, #02060a 100%);
+}
+
+.menu-card {
+  width: min(520px, 100%);
+  padding: 32px;
+  border: 1px solid var(--color-border);
+  border-radius: 28px;
+  background: rgba(8, 17, 29, 0.8);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.28);
+  text-align: center;
+}
+
+.menu-card h1 {
+  margin: 0 0 10px;
+  font-size: clamp(2rem, 4vw, 3rem);
+}
+
+.menu-card p {
+  margin: 0 0 24px;
+  color: rgba(245, 241, 232, 0.8);
+  font-size: 1.05rem;
+}
+
+.menu-actions {
+  display: grid;
+  gap: 14px;
+}
+
+.menu-button,
+.mode-back-button {
+  border: 2px solid #111;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.96);
+  color: #111;
+  font: inherit;
+}
+
+.menu-button {
+  width: 100%;
+  padding: 16px 18px;
+  font-size: 1.2rem;
+}
+
+.mode-back-button {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  z-index: 5;
+  padding: 10px 16px;
+}
+
+.mode-badge {
+  position: absolute;
+  top: 18px;
+  right: 172px;
+  z-index: 5;
+  padding: 10px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: rgba(8, 17, 29, 0.72);
+  backdrop-filter: blur(12px);
+  font-size: 0.95rem;
+}
+
+.timeline-shell {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  right: 16px;
+  z-index: 2;
+  padding: 14px 18px;
+  border: 1px solid var(--color-border);
+  border-radius: 24px;
+  background: rgba(8, 17, 29, 0.72);
+  backdrop-filter: blur(12px);
+}
+
+.timeline-track {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.timeline-box {
+  position: relative;
+  min-width: 92px;
+  padding: 10px 10px 12px;
+  border: 3px solid #111;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.95);
+  flex: 0 0 auto;
+}
+
+.timeline-box.active {
+  background: #f6d98d;
+}
+
+.timeline-select,
+.timeline-close {
+  border: 0;
+  background: transparent;
+  color: #111;
+  font: inherit;
+}
+
+.timeline-select {
+  width: 100%;
+  padding: 12px 28px 6px 8px;
+  font-size: 1.15rem;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.timeline-close {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  width: 24px;
+  height: 24px;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.timeline-label-text {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timeline-box.add-box {
+  min-width: 150px;
+  padding: 16px 18px;
+  color: #111;
+  font: inherit;
+  font-size: 1.15rem;
+  text-align: center;
+}
+
+.timeline-box.add-box.editing {
+  min-width: 220px;
+  padding: 10px;
+}
+
+.timeline-box.editing {
+  min-width: 220px;
+  padding: 10px;
+}
+
+.timeline-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 2px solid #111;
+  border-radius: 12px;
+  background: #fff;
+  color: #111;
+  font: inherit;
+}
+
+.timeline-input-row {
+  display: flex;
+  gap: 8px;
+}
+
+.timeline-edit-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.timeline-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  padding: 8px 10px;
+  border: 2px solid #111;
+  border-radius: 12px;
+  background: #fff;
+  color: #111;
+  font: inherit;
+}
+
+.folder-icon {
+  position: relative;
+  display: block;
+  width: 18px;
+  height: 12px;
+  border: 2px solid #111;
+  border-radius: 3px;
+  background: #f6d98d;
+}
+
+.folder-icon::before {
+  content: "";
+  position: absolute;
+  left: 1px;
+  top: -6px;
+  width: 8px;
+  height: 5px;
+  border: 2px solid #111;
+  border-bottom: 0;
+  border-radius: 3px 3px 0 0;
+  background: #f6d98d;
+}
+
+.timeline-mini-button {
+  flex: 1;
+  padding: 8px 10px;
+  border: 2px solid #111;
+  border-radius: 12px;
+  background: #f6d98d;
+  color: #111;
+  font: inherit;
+}
+
+.timeline-mini-button.secondary {
+  background: #fff;
+}
+
+.map-stage {
+  position: absolute;
+  inset: 0;
+  padding: 0;
+}
+
+.map-viewport {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+  background: #02060a;
+}
+
+.map-viewport:active {
+  cursor: grabbing;
+}
+
+.map-image {
+  position: absolute;
+  max-width: none;
+  user-select: none;
+  -webkit-user-drag: none;
+  pointer-events: none;
+}
+
+.map-empty {
+  position: absolute;
+  inset: 0;
+  background: #ffffff;
+}
+
+.placed-icons-layer {
+  position: absolute;
+  pointer-events: none;
+}
+
+.placed-icon-wrap {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  z-index: 3;
+  padding: 8px;
+  pointer-events: none;
+}
+
+.placed-icon-button,
+.icon-thumb.draggable {
+  border: 0;
+  padding: 0;
+  cursor: grab;
+}
+
+.placed-icon-button {
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.22);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  z-index: 1;
+  cursor: move;
+  pointer-events: auto;
+}
+
+.placed-icon-image {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+}
+
+.placed-icon-delete {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 22px;
+  height: 22px;
+  border: 2px solid #111;
+  border-radius: 999px;
+  background: #fff;
+  color: #111;
+  font: inherit;
+  z-index: 2;
+  pointer-events: auto;
+}
+
+.placed-icon-menu {
+  position: absolute;
+  left: 50%;
+  bottom: -18px;
+  transform: translateX(-50%);
+  min-width: 28px;
+  height: 22px;
+  border: 2px solid #111;
+  border-radius: 999px;
+  background: #fff;
+  color: #111;
+  font: inherit;
+  font-size: 0.75rem;
+  z-index: 2;
+  pointer-events: auto;
+}
+
+.error-toast {
+  position: absolute;
+  left: 20px;
+  bottom: 20px;
+  z-index: 2;
+  padding: 12px 16px;
+  border: 1px solid rgba(215, 38, 61, 0.45);
+  border-radius: 14px;
+  background: rgba(40, 10, 15, 0.88);
+  color: #ffe5e8;
+}
+
+.icons-toggle {
+  position: absolute;
+  right: 20px;
+  bottom: 20px;
+  z-index: 4;
+  width: 62px;
+  height: 62px;
+  border: 2px solid rgba(17, 17, 17, 0.92);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.96);
+  color: #111;
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.icons-panel {
+  position: absolute;
+  right: 20px;
+  bottom: 96px;
+  z-index: 4;
+  width: 260px;
+  max-height: 340px;
+  padding: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 22px;
+  background: rgba(8, 17, 29, 0.86);
+  backdrop-filter: blur(12px);
+}
+
+.icons-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.icons-close,
+.icons-add-button {
+  border: 2px solid #111;
+  border-radius: 12px;
+  background: #fff;
+  color: #111;
+  font: inherit;
+}
+
+.icons-close {
+  width: 32px;
+  height: 32px;
+}
+
+.icons-add-button {
+  width: 100%;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+}
+
+.icons-list {
+  display: grid;
+  gap: 10px;
+  max-height: 236px;
+  overflow-y: auto;
+}
+
+.icon-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.icon-thumb {
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.92);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.icon-thumb.circle {
+  width: 54px;
+  height: 54px;
+  border-radius: 999px;
+}
+
+.icon-thumb-image {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+}
+
+.icon-delete {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 24px;
+  height: 24px;
+  border: 2px solid #111;
+  border-radius: 999px;
+  background: #fff;
+  color: #111;
+  font: inherit;
+}
+
+.content-editor-modal {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  background: rgba(2, 6, 10, 0.28);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.content-editor-card {
+  width: min(420px, calc(100vw - 32px));
+  padding: 18px;
+  border-radius: 22px;
+  background: rgba(8, 17, 29, 0.94);
+  border: 1px solid var(--color-border);
+}
+
+.content-editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.content-editor-close,
+.content-type-button,
+.content-resource-button,
+.content-save-button {
+  border: 2px solid #111;
+  border-radius: 12px;
+  background: #fff;
+  color: #111;
+  font: inherit;
+}
+
+.content-editor-close {
+  width: 32px;
+  height: 32px;
+}
+
+.content-type-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.content-type-button {
+  flex: 1;
+  padding: 8px 10px;
+}
+
+.content-type-button.active {
+  background: #f6d98d;
+}
+
+.content-textarea {
+  width: 100%;
+  min-height: 120px;
+  padding: 12px;
+  border: 2px solid #111;
+  border-radius: 12px;
+  font: inherit;
+  resize: vertical;
+  margin-bottom: 12px;
+}
+
+.content-resource-row {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.content-resource-button,
+.content-save-button {
+  padding: 10px 12px;
+}
+
+.content-resource-name {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.view-empty {
+  position: absolute;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%);
+  z-index: 5;
+  padding: 12px 18px;
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  background: rgba(8, 17, 29, 0.8);
+  backdrop-filter: blur(12px);
+}
+
+@media (max-width: 700px) {
+  .menu-shell {
+    padding: 20px;
+  }
+
+  .menu-card {
+    padding: 24px 18px;
+  }
+
+  .mode-back-button {
+    top: auto;
+    right: 12px;
+    bottom: 12px;
+  }
+
+  .mode-badge {
+    top: auto;
+    left: 12px;
+    right: auto;
+    bottom: 12px;
+  }
+
+  .timeline-shell {
+    left: 10px;
+    right: 10px;
+    top: 10px;
+    padding: 10px 12px;
+  }
+
+  .timeline-track {
+    gap: 12px;
+  }
+
+  .timeline-box {
+    min-width: 82px;
+    padding: 14px 12px;
+    font-size: 1rem;
+  }
+
+  .timeline-box.add-box {
+    min-width: 128px;
+  }
+}

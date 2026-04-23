@@ -1,0 +1,9 @@
+node_modules/
+dist/
+dist-electron/
+.vite/
+coverage/
+*.log
+.DS_Store
+Thumbs.db
+MapaMalvinas_Data/
