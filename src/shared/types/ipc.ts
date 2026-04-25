@@ -1,5 +1,6 @@
 import type { Day } from "./day";
 import type { DayIcon } from "./dayIcon";
+import type { MapDrawingLine, MapDrawingLineStyle } from "./mapDrawingLine";
 import type { MapIconPlacement } from "./mapIconPlacement";
 
 export type IpcResponse<T> = {
@@ -14,6 +15,7 @@ export type BootstrapData = {
   dataDirectory: string;
   days: Day[];
   iconsByDay: Record<number, DayIcon[]>;
+  mapDrawingLinesByDay: Record<number, MapDrawingLine[]>;
   mapPlacementsByDay: Record<number, MapIconPlacement[]>;
 };
 
@@ -53,6 +55,16 @@ export type UpdateMapIconPlacementPayload = {
 
 export type DeleteMapIconPlacementPayload = {
   placementId: number;
+};
+
+export type CreateMapDrawingLinePayload = {
+  dayId: number;
+  style: MapDrawingLineStyle;
+  pointsPct: number[];
+};
+
+export type DeleteMapDrawingLinePayload = {
+  lineId: number;
 };
 
 export type UpdateMapIconPlacementContentPayload = {

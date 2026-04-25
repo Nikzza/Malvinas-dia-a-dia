@@ -45,3 +45,13 @@ CREATE TABLE IF NOT EXISTS iconos_mapa (
   FOREIGN KEY (id_dia) REFERENCES dias(id),
   FOREIGN KEY (id_icono_biblioteca) REFERENCES iconos_dia(id)
 );
+
+CREATE TABLE IF NOT EXISTS lineas_mapa (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id_dia INTEGER NOT NULL,
+  estilo TEXT NOT NULL DEFAULT 'solid',
+  puntos_pct_json TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (id_dia) REFERENCES dias(id)
+);

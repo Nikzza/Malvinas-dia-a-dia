@@ -55,6 +55,92 @@ body {
   gap: 14px;
 }
 
+.password-gate-modal {
+  position: absolute;
+  inset: 0;
+  z-index: 9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(2, 6, 10, 0.44);
+}
+
+.password-gate-card {
+  width: min(420px, calc(100vw - 32px));
+  padding: 22px;
+  border: 1px solid var(--color-border);
+  border-radius: 28px;
+  background: rgba(8, 17, 29, 0.94);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.34);
+}
+
+.password-gate-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.password-gate-close,
+.password-gate-button {
+  border: 2px solid #111;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.96);
+  color: #111;
+  font: inherit;
+}
+
+.password-gate-close {
+  width: 38px;
+  height: 38px;
+}
+
+.password-gate-text {
+  margin: 0 0 18px;
+  color: rgba(245, 241, 232, 0.8);
+  line-height: 1.5;
+}
+
+.password-gate-inputs {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.password-gate-input {
+  width: 58px;
+  height: 64px;
+  border: 2px solid rgba(255, 255, 255, 0.24);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 1.5rem;
+  text-align: center;
+  outline: none;
+}
+
+.password-gate-input:focus {
+  border-color: #f6d98d;
+  box-shadow: 0 0 0 3px rgba(246, 217, 141, 0.18);
+}
+
+.password-gate-error {
+  margin-bottom: 14px;
+  color: #ffb2ba;
+  text-align: center;
+}
+
+.password-gate-button {
+  width: 100%;
+  padding: 12px 14px;
+  font-size: 1.05rem;
+}
+
 .menu-button,
 .mode-back-button {
   border: 2px solid #111;
@@ -93,64 +179,93 @@ body {
 
 .timeline-shell {
   position: absolute;
-  top: 16px;
-  left: 16px;
-  right: 16px;
+  top: 18px;
+  left: 18px;
+  width: min(640px, calc(100vw - 260px));
   z-index: 2;
-  padding: 14px 18px;
-  border: 1px solid var(--color-border);
-  border-radius: 24px;
-  background: rgba(8, 17, 29, 0.72);
-  backdrop-filter: blur(12px);
+  padding: 0;
+  background: transparent;
 }
 
 .timeline-track {
   display: flex;
-  align-items: center;
-  gap: 18px;
+  align-items: stretch;
+  gap: 12px;
   overflow-x: auto;
-  padding-bottom: 4px;
+  padding: 2px 2px 10px;
+  scrollbar-width: thin;
 }
 
 .timeline-box {
   position: relative;
-  min-width: 92px;
-  padding: 10px 10px 12px;
-  border: 3px solid #111;
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.95);
+  min-width: 104px;
+  width: 104px;
+  min-height: 72px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 22px;
+  background: rgba(10, 19, 37, 0.18);
   flex: 0 0 auto;
+  overflow: hidden;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  transition:
+    transform 180ms ease,
+    box-shadow 180ms ease,
+    border-color 180ms ease,
+    background 180ms ease;
+}
+
+.timeline-box::after {
+  content: "";
+  position: absolute;
+  inset: auto 10px 0;
+  height: 18px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.1), transparent);
+  opacity: 0.08;
+  pointer-events: none;
 }
 
 .timeline-box.active {
-  background: #f6d98d;
+  width: 124px;
+  min-width: 124px;
+  transform: translateY(-2px) scale(1.01);
+  border-color: rgba(246, 217, 141, 0.82);
+  background:
+    linear-gradient(180deg, rgba(70, 111, 201, 0.28), rgba(255, 255, 255, 0.05)),
+    rgba(25, 72, 164, 0.72);
+  box-shadow:
+    0 16px 28px rgba(0, 0, 0, 0.22),
+    0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 
 .timeline-select,
 .timeline-close {
   border: 0;
   background: transparent;
-  color: #111;
+  color: #fff;
   font: inherit;
 }
 
 .timeline-select {
   width: 100%;
-  padding: 12px 28px 6px 8px;
-  font-size: 1.15rem;
-  text-align: center;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  height: 100%;
+  padding: 14px 12px 12px;
+  font-size: 0.92rem;
+  text-align: left;
+  display: grid;
+  align-content: center;
+  gap: 4px;
 }
 
 .timeline-close {
   position: absolute;
-  top: 4px;
+  top: 6px;
   right: 6px;
   width: 24px;
   height: 24px;
-  font-size: 1rem;
+  border-radius: 999px;
+  background: rgba(6, 11, 22, 0.82);
+  font-size: 0.9rem;
   line-height: 1;
 }
 
@@ -160,33 +275,58 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 0.98rem;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
 }
 
 .timeline-box.add-box {
-  min-width: 150px;
-  padding: 16px 18px;
-  color: #111;
+  min-width: 124px;
+  width: 124px;
+  min-height: 72px;
+  padding: 14px 14px;
+  color: #fff;
   font: inherit;
-  font-size: 1.15rem;
-  text-align: center;
+  font-size: 0.92rem;
+  text-align: left;
+  display: grid;
+  align-content: center;
+  gap: 10px;
 }
 
 .timeline-box.add-box.editing {
-  min-width: 220px;
-  padding: 10px;
+  min-width: 260px;
+  width: 260px;
+  padding: 14px;
 }
 
 .timeline-box.editing {
-  min-width: 220px;
-  padding: 10px;
+  min-width: 260px;
+  width: 260px;
+  padding: 14px;
+  background: rgba(7, 18, 39, 0.94);
+}
+
+.timeline-add-symbol {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.12);
+  font-size: 1.6rem;
+  line-height: 1;
 }
 
 .timeline-input {
   width: 100%;
   padding: 10px 12px;
-  border: 2px solid #111;
-  border-radius: 12px;
-  background: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.94);
   color: #111;
   font: inherit;
 }
@@ -208,8 +348,8 @@ body {
   justify-content: center;
   width: 44px;
   padding: 8px 10px;
-  border: 2px solid #111;
-  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 14px;
   background: #fff;
   color: #111;
   font: inherit;
@@ -241,8 +381,8 @@ body {
 .timeline-mini-button {
   flex: 1;
   padding: 8px 10px;
-  border: 2px solid #111;
-  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 14px;
   background: #f6d98d;
   color: #111;
   font: inherit;
@@ -250,6 +390,22 @@ body {
 
 .timeline-mini-button.secondary {
   background: #fff;
+}
+
+.timeline-box:hover {
+  transform: translateY(-2px);
+  border-color: rgba(255, 255, 255, 0.28);
+  background: rgba(34, 67, 132, 0.34);
+}
+
+.timeline-box.active:hover {
+  transform: translateY(-2px) scale(1.01);
+}
+
+@media (max-width: 960px) {
+  .timeline-shell {
+    width: calc(100vw - 36px);
+  }
 }
 
 .map-stage {
@@ -290,6 +446,27 @@ body {
   pointer-events: none;
 }
 
+.drawing-layer-surface {
+  position: absolute;
+  z-index: 1;
+}
+
+.drawing-layer-wrap {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+
+.drawing-stage {
+  position: absolute !important;
+  inset: 0;
+  pointer-events: none;
+}
+
+.drawing-stage-active {
+  pointer-events: auto;
+}
+
 .placed-icon-wrap {
   position: absolute;
   transform: translate(-50%, -50%);
@@ -306,11 +483,11 @@ body {
 }
 
 .placed-icon-button {
-  width: 44px;
-  height: 44px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.22);
+  width: 64px;
+  height: 64px;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -407,8 +584,8 @@ body {
 }
 
 .placed-icon-image {
-  width: 28px;
-  height: 28px;
+  width: 48px;
+  height: 48px;
   object-fit: contain;
 }
 
@@ -471,11 +648,153 @@ body {
   line-height: 1;
 }
 
+.drawing-toggle {
+  position: absolute;
+  right: 20px;
+  bottom: 96px;
+  z-index: 5;
+  width: 62px;
+  height: 62px;
+  border: 2px solid rgba(17, 17, 17, 0.92);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.96);
+  color: #111;
+}
+
+.drawing-toggle-icon {
+  display: block;
+  width: 24px;
+  height: 0;
+  margin: 0 auto;
+  border-top: 4px solid #111;
+  transform: rotate(-32deg);
+}
+
+.drawing-panel {
+  position: absolute;
+  right: 20px;
+  bottom: 172px;
+  z-index: 6;
+  width: 280px;
+  padding: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 22px;
+  background: rgba(8, 17, 29, 0.86);
+  backdrop-filter: blur(12px);
+}
+
+.drawing-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.drawing-close,
+.drawing-style-button,
+.drawing-action-button {
+  border: 2px solid #111;
+  border-radius: 12px;
+  background: #fff;
+  color: #111;
+  font: inherit;
+}
+
+.drawing-close {
+  width: 32px;
+  height: 32px;
+}
+
+.drawing-style-list {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.drawing-style-button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+}
+
+.drawing-style-button.active,
+.drawing-action-button.active {
+  background: #f6d98d;
+}
+
+.drawing-style-preview {
+  display: inline-block;
+  width: 54px;
+  height: 0;
+  border-top: 4px solid #111;
+}
+
+.drawing-style-preview.freehand {
+  position: relative;
+  height: 14px;
+  border-top: 0;
+}
+
+.drawing-style-preview.freehand::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 5px;
+  height: 4px;
+  border-radius: 999px;
+  background:
+    linear-gradient(90deg, transparent 0 8%, #111 8% 26%, transparent 26% 32%, #111 32% 58%, transparent 58% 66%, #111 66% 90%, transparent 90%);
+}
+
+.drawing-style-preview.curve {
+  height: 16px;
+  border-top: 0;
+  border-radius: 999px 999px 0 0;
+  border-bottom: 0;
+  border-left: 0;
+  border-right: 0;
+  border-top: 4px solid #111;
+}
+
+.drawing-style-preview.dashed {
+  border-top-style: dashed;
+}
+
+.drawing-style-preview.dotted {
+  border-top-style: dotted;
+}
+
+.drawing-hint {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+
+.drawing-action-button {
+  width: 100%;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+
+.drawing-action-button.secondary {
+  margin-bottom: 0;
+}
+
+.drawing-action-button:disabled {
+  opacity: 0.55;
+}
+
 .icons-panel {
   position: absolute;
   right: 20px;
   bottom: 96px;
-  z-index: 4;
+  z-index: 6;
   width: 260px;
   max-height: 340px;
   padding: 14px;
@@ -694,6 +1013,22 @@ body {
     left: 12px;
     right: auto;
     bottom: 12px;
+  }
+
+  .drawing-toggle {
+    right: 12px;
+    bottom: 84px;
+  }
+
+  .icons-toggle {
+    right: 12px;
+    bottom: 12px;
+  }
+
+  .drawing-panel {
+    right: 12px;
+    bottom: 156px;
+    width: min(280px, calc(100vw - 24px));
   }
 
   .timeline-shell {

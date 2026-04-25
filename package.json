@@ -16,6 +16,7 @@
   },
   "devDependencies": {
     "@electron/rebuild": "^4.0.4",
+    "@tailwindcss/vite": "^4.2.4",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^25.6.0",
     "@types/react": "^19.2.14",
@@ -27,11 +28,14 @@
     "electron": "^41.3.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
+    "tailwindcss": "^4.2.4",
     "typescript": "^6.0.3",
     "vite": "^8.0.10",
     "wait-on": "^9.0.5"
   },
   "dependencies": {
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "konva": "^10.2.5",
+    "react-konva": "^19.2.3"
   }
 }
