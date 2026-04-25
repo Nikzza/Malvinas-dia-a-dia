@@ -55,6 +55,7 @@ function runCompatibilityMigrations(db: Database.Database) {
   ensureColumn(db, "iconos_mapa", "tipo_contenido", "TEXT");
   ensureColumn(db, "iconos_mapa", "texto_descriptivo", "TEXT");
   ensureColumn(db, "iconos_mapa", "ruta_recurso_local", "TEXT");
+  ensureColumn(db, "iconos_mapa", "titulo_contenido", "TEXT");
 }
 
 export function initDatabase() {

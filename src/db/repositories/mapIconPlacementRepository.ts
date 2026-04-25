@@ -8,6 +8,7 @@ type MapIconPlacementRow = {
   pos_x_pct: number;
   pos_y_pct: number;
   tipo_contenido: "texto" | "imagen" | "video" | null;
+  titulo_contenido: string | null;
   texto_descriptivo: string | null;
   ruta_recurso_local: string | null;
   created_at: string;
@@ -20,7 +21,7 @@ export const mapIconPlacementRepository = {
     const rows = db
       .prepare(
         `
-          SELECT id, id_dia, id_icono_biblioteca, pos_x_pct, pos_y_pct, tipo_contenido, texto_descriptivo, ruta_recurso_local, created_at, updated_at
+          SELECT id, id_dia, id_icono_biblioteca, pos_x_pct, pos_y_pct, tipo_contenido, titulo_contenido, texto_descriptivo, ruta_recurso_local, created_at, updated_at
           FROM iconos_mapa
           ORDER BY id_dia ASC, id ASC
         `
@@ -34,6 +35,7 @@ export const mapIconPlacementRepository = {
       posXPct: row.pos_x_pct,
       posYPct: row.pos_y_pct,
       tipoContenido: row.tipo_contenido,
+      tituloContenido: row.titulo_contenido,
       textoDescriptivo: row.texto_descriptivo,
       rutaRecursoLocal: row.ruta_recurso_local,
       createdAt: row.created_at,
@@ -62,6 +64,7 @@ export const mapIconPlacementRepository = {
   updateContent: (
     placementId: number,
     tipoContenido: "texto" | "imagen" | "video" | null,
+    tituloContenido: string | null,
     textoDescriptivo: string | null,
     rutaRecursoLocal: string | null
   ): void => {
@@ -69,10 +72,10 @@ export const mapIconPlacementRepository = {
     db.prepare(
       `
         UPDATE iconos_mapa
-        SET tipo_contenido = ?, texto_descriptivo = ?, ruta_recurso_local = ?, updated_at = CURRENT_TIMESTAMP
+        SET tipo_contenido = ?, titulo_contenido = ?, texto_descriptivo = ?, ruta_recurso_local = ?, updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
       `
-    ).run(tipoContenido, textoDescriptivo, rutaRecursoLocal, placementId);
+    ).run(tipoContenido, tituloContenido, textoDescriptivo, rutaRecursoLocal, placementId);
   },
   remove: (placementId: number): void => {
     const db = getDatabase();

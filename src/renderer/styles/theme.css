@@ -316,8 +316,94 @@ body {
   justify-content: center;
   position: relative;
   z-index: 1;
-  cursor: move;
+  cursor: pointer;
   pointer-events: auto;
+}
+
+.content-viewer-modal {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  background: rgba(2, 6, 10, 0.36);
+}
+
+.content-viewer-card {
+  width: min(980px, calc(100vw - 64px));
+  max-height: min(78vh, 760px);
+  border: 1px solid var(--color-border);
+  border-radius: 26px;
+  background: rgba(250, 247, 239, 0.97);
+  color: #161616;
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+}
+
+.content-viewer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 22px;
+  border-bottom: 1px solid rgba(22, 22, 22, 0.12);
+  background: rgba(255, 255, 255, 0.75);
+}
+
+.content-viewer-close {
+  width: 34px;
+  height: 34px;
+  border: 2px solid #111;
+  border-radius: 12px;
+  background: #fff;
+  color: #111;
+  font: inherit;
+}
+
+.content-viewer-body {
+  display: grid;
+  grid-template-columns: minmax(280px, 1.15fr) minmax(260px, 0.85fr);
+  gap: 24px;
+  align-items: start;
+  padding: 24px;
+}
+
+.content-viewer-media-frame {
+  margin: 0;
+  min-height: 260px;
+  border: 1px solid rgba(22, 22, 22, 0.15);
+  border-radius: 20px;
+  overflow: hidden;
+  background:
+    linear-gradient(135deg, rgba(201, 212, 228, 0.9), rgba(233, 236, 240, 0.95));
+}
+
+.content-viewer-media {
+  display: block;
+  width: 100%;
+  max-height: min(60vh, 560px);
+  object-fit: contain;
+  background: #d7dce3;
+}
+
+.content-viewer-text-only {
+  display: none;
+}
+
+.content-viewer-text {
+  align-self: stretch;
+  max-height: min(60vh, 560px);
+  overflow-y: auto;
+  padding-right: 6px;
+  font-size: 1.1rem;
+  line-height: 1.7;
+}
+
+.content-viewer-text p {
+  margin: 0;
+  white-space: pre-wrap;
 }
 
 .placed-icon-image {
@@ -546,6 +632,17 @@ body {
   margin-bottom: 12px;
 }
 
+.content-title-input {
+  width: 100%;
+  min-height: 48px;
+  padding: 12px;
+  border: 2px solid #111;
+  border-radius: 12px;
+  font: inherit;
+  resize: none;
+  margin-bottom: 12px;
+}
+
 .content-resource-row {
   display: grid;
   gap: 8px;
@@ -618,5 +715,24 @@ body {
 
   .timeline-box.add-box {
     min-width: 128px;
+  }
+
+  .content-viewer-modal {
+    padding: 14px;
+  }
+
+  .content-viewer-card {
+    width: min(100vw - 28px, 720px);
+    max-height: calc(100vh - 28px);
+  }
+
+  .content-viewer-body {
+    grid-template-columns: 1fr;
+    gap: 18px;
+    padding: 18px;
+  }
+
+  .content-viewer-media-frame {
+    min-height: 200px;
   }
 }

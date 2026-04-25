@@ -6,6 +6,7 @@ import type {
   CreateDayPayload,
   DeleteMapIconPlacementPayload,
   DeleteDayIconPayload,
+  SelectContentResourcePayload,
   UpdateMapIconPlacementContentPayload,
   UpdateMapIconPlacementPayload,
   UpdateDayPayload
@@ -28,7 +29,8 @@ const api = {
     ipcRenderer.invoke("map-icons:delete", payload) as Promise<BootstrapData>,
   updateMapIconPlacementContent: (payload: UpdateMapIconPlacementContentPayload) =>
     ipcRenderer.invoke("map-icons:update-content", payload) as Promise<BootstrapData>,
-  selectContentResource: () => ipcRenderer.invoke("content:select-resource") as Promise<string | null>
+  selectContentResource: (payload: SelectContentResourcePayload) =>
+    ipcRenderer.invoke("content:select-resource", payload) as Promise<string | null>
 };
 
 contextBridge.exposeInMainWorld("mapaMalvinas", api);

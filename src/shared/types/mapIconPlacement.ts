@@ -5,6 +5,7 @@ export type MapIconPlacement = {
   posXPct: number;
   posYPct: number;
   tipoContenido?: "texto" | "imagen" | "video" | null;
+  tituloContenido?: string | null;
   textoDescriptivo?: string | null;
   rutaRecursoLocal?: string | null;
   recursoDataUrl?: string | null;
