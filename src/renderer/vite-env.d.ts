@@ -2,9 +2,11 @@
 
 import type {
   BootstrapData,
+  CreateMapDrawingLinePayload,
   CreateMapIconPlacementPayload,
   CreateDayIconPayload,
   CreateDayPayload,
+  DeleteMapDrawingLinePayload,
   DeleteMapIconPlacementPayload,
   DeleteDayIconPayload,
   SelectContentResourcePayload,
@@ -24,6 +26,8 @@ declare global {
       selectIconPng: () => Promise<string | null>;
       createDayIcon: (payload: CreateDayIconPayload) => Promise<BootstrapData>;
       deleteDayIcon: (payload: DeleteDayIconPayload) => Promise<BootstrapData>;
+      createMapDrawingLine: (payload: CreateMapDrawingLinePayload) => Promise<BootstrapData>;
+      deleteMapDrawingLine: (payload: DeleteMapDrawingLinePayload) => Promise<BootstrapData>;
       createMapIconPlacement: (payload: CreateMapIconPlacementPayload) => Promise<BootstrapData>;
       updateMapIconPlacement: (payload: UpdateMapIconPlacementPayload) => Promise<BootstrapData>;
       deleteMapIconPlacement: (payload: DeleteMapIconPlacementPayload) => Promise<BootstrapData>;

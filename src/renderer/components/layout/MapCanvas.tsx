@@ -6,14 +6,22 @@ import type {
   WheelEvent as ReactWheelEvent
 } from "react";
 import type { Day } from "../../../shared/types/day";
+import type { MapDrawingLine, MapDrawingLineStyle } from "../../../shared/types/mapDrawingLine";
 import type { DayIcon } from "../../../shared/types/dayIcon";
 import type { MapIconPlacement } from "../../../shared/types/mapIconPlacement";
+import { MapDrawingLayer } from "./MapDrawingLayer";
+import type { MapDrawingTool } from "./MapDrawingLayer";
 
 type MapCanvasProps = {
   activeDay: Day | null;
+  drawingLines: MapDrawingLine[];
+  drawingLineStyle: MapDrawingLineStyle;
+  drawingTool: MapDrawingTool;
   dragLibraryIcon: DayIcon | null;
+  isDrawingEnabled: boolean;
   isEditable: boolean;
   onActivatePlacement?: (placement: MapIconPlacement) => void;
+  onCreateDrawingLine: (pointsPct: number[], style: MapDrawingLineStyle) => Promise<void>;
   onCreatePlacement: (libraryIconId: number, posXPct: number, posYPct: number) => Promise<void>;
   onMovePlacement: (placementId: number, posXPct: number, posYPct: number) => Promise<void>;
   onDeletePlacement: (placementId: number) => Promise<void>;
@@ -48,9 +56,14 @@ function clampPct(value: number) {
 
 export function MapCanvas({
   activeDay,
+  drawingLines,
+  drawingLineStyle,
+  drawingTool,
   dragLibraryIcon,
+  isDrawingEnabled,
   isEditable,
   onActivatePlacement,
+  onCreateDrawingLine,
   onCreatePlacement,
   onDeletePlacement,
   onEditPlacement,
@@ -265,6 +278,10 @@ export function MapCanvas({
       return;
     }
 
+    if (isDrawingEnabled) {
+      return;
+    }
+
     if (!displayMapSource) {
       return;
     }
@@ -351,6 +368,20 @@ export function MapCanvas({
               src={displayMapSource}
               style={imageStyle}
             />
+
+            <div className="drawing-layer-surface" style={imageStyle}>
+              <div className="drawing-layer-wrap" style={{ width: `${renderedWidth}px`, height: `${renderedHeight}px` }}>
+                <MapDrawingLayer
+                  drawingTool={drawingTool}
+                  height={renderedHeight}
+                  isDrawingEnabled={isEditable && isDrawingEnabled}
+                  lineStyle={drawingLineStyle}
+                  lines={drawingLines}
+                  onCreateLine={onCreateDrawingLine}
+                  width={renderedWidth}
+                />
+              </div>
+            </div>
 
             <div className="placed-icons-layer" style={imageStyle}>
               {placements.map((placement) => (

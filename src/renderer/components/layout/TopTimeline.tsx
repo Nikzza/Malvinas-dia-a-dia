@@ -208,7 +208,8 @@ export function TopTimeline({
           </div>
         ) : isEditable ? (
           <button className="timeline-box add-box" disabled={isSavingDay} onClick={() => setIsAdding(true)} type="button">
-            {isSavingDay ? "Guardando..." : "Agregar dia"}
+            <span className="timeline-add-symbol">+</span>
+            <span>{isSavingDay ? "Guardando..." : "Agregar dia"}</span>
           </button>
         ) : null}
       </div>

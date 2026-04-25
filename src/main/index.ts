@@ -5,14 +5,18 @@ import { createMainWindow } from "./window";
 import { initDatabase, getDatabaseInfo } from "../db/connection";
 import { dayRepository } from "../db/repositories/dayRepository";
 import type { Day } from "../shared/types/day";
+import type { MapDrawingLine } from "../shared/types/mapDrawingLine";
 import type { DayIcon } from "../shared/types/dayIcon";
 import type { MapIconPlacement } from "../shared/types/mapIconPlacement";
 import { dayIconRepository } from "../db/repositories/dayIconRepository";
+import { mapDrawingLineRepository } from "../db/repositories/mapDrawingLineRepository";
 import { mapIconPlacementRepository } from "../db/repositories/mapIconPlacementRepository";
 import type {
   CreateMapIconPlacementPayload,
+  CreateMapDrawingLinePayload,
   CreateDayIconPayload,
   CreateDayPayload,
+  DeleteMapDrawingLinePayload,
   DeleteMapIconPlacementPayload,
   DeleteDayIconPayload,
   SelectContentResourcePayload,
@@ -173,9 +177,21 @@ function enrichMapPlacementsByDay(placements: MapIconPlacement[], icons: DayIcon
   }, {});
 }
 
+function groupMapDrawingLinesByDay(lines: MapDrawingLine[]) {
+  return lines.reduce<Record<number, MapDrawingLine[]>>((accumulator, line) => {
+    if (!accumulator[line.dayId]) {
+      accumulator[line.dayId] = [];
+    }
+
+    accumulator[line.dayId].push(line);
+    return accumulator;
+  }, {});
+}
+
 function getBootstrapData() {
   const info = getDatabaseInfo();
   const icons = dayIconRepository.listAll();
+  const drawingLines = mapDrawingLineRepository.listAll();
 
   return {
     appName: "Malvinas dia a dia",
@@ -183,6 +199,7 @@ function getBootstrapData() {
     dataDirectory: info.dataDirectory,
     days: enrichDays(dayRepository.list()),
     iconsByDay: enrichIconsByDay(icons),
+    mapDrawingLinesByDay: groupMapDrawingLinesByDay(drawingLines),
     mapPlacementsByDay: enrichMapPlacementsByDay(mapIconPlacementRepository.listAll(), icons)
   };
 }
@@ -263,6 +280,22 @@ function registerIpcHandlers() {
   });
   ipcMain.handle("icons:delete", async (_event, payload: DeleteDayIconPayload) => {
     dayIconRepository.remove(payload.iconId);
+    return getBootstrapData();
+  });
+  ipcMain.handle("map-lines:create", async (_event, payload: CreateMapDrawingLinePayload) => {
+    if (!payload.dayId) {
+      throw new Error("Primero selecciona un dia.");
+    }
+
+    if (!Array.isArray(payload.pointsPct) || payload.pointsPct.length < 4) {
+      throw new Error("La linea no tiene suficientes puntos.");
+    }
+
+    mapDrawingLineRepository.create(payload.dayId, payload.style, payload.pointsPct);
+    return getBootstrapData();
+  });
+  ipcMain.handle("map-lines:delete", async (_event, payload: DeleteMapDrawingLinePayload) => {
+    mapDrawingLineRepository.remove(payload.lineId);
     return getBootstrapData();
   });
   ipcMain.handle("map-icons:create", async (_event, payload: CreateMapIconPlacementPayload) => {
