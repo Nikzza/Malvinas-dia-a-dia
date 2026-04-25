@@ -58,6 +58,11 @@ export type DeleteMapIconPlacementPayload = {
 export type UpdateMapIconPlacementContentPayload = {
   placementId: number;
   tipoContenido: "texto" | "imagen" | "video" | null;
+  tituloContenido: string | null;
   textoDescriptivo: string | null;
   rutaRecursoLocal: string | null;
+};
+
+export type SelectContentResourcePayload = {
+  tipoContenido: "imagen" | "video";
 };

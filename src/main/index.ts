@@ -15,10 +15,14 @@ import type {
   CreateDayPayload,
   DeleteMapIconPlacementPayload,
   DeleteDayIconPayload,
+  SelectContentResourcePayload,
   UpdateMapIconPlacementContentPayload,
   UpdateMapIconPlacementPayload,
   UpdateDayPayload
 } from "../shared/types/ipc";
+
+const IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "gif", "bmp", "webp", "svg", "avif", "tif", "tiff", "ico"];
+const VIDEO_EXTENSIONS = ["mp4", "webm", "mov", "m4v", "avi", "mkv", "wmv", "flv", "mpeg", "mpg", "ts", "mts", "m2ts", "3gp", "ogv"];
 
 function getMimeType(filePath: string) {
   const extension = path.extname(filePath).toLowerCase();
@@ -33,9 +37,82 @@ function getMimeType(filePath: string) {
       return "image/webp";
     case ".bmp":
       return "image/bmp";
+    case ".gif":
+      return "image/gif";
+    case ".svg":
+      return "image/svg+xml";
+    case ".avif":
+      return "image/avif";
+    case ".tif":
+    case ".tiff":
+      return "image/tiff";
+    case ".ico":
+      return "image/x-icon";
+    case ".mp4":
+      return "video/mp4";
+    case ".webm":
+      return "video/webm";
+    case ".mov":
+      return "video/quicktime";
+    case ".m4v":
+      return "video/x-m4v";
+    case ".avi":
+      return "video/x-msvideo";
+    case ".mkv":
+      return "video/x-matroska";
+    case ".wmv":
+      return "video/x-ms-wmv";
+    case ".flv":
+      return "video/x-flv";
+    case ".mpeg":
+    case ".mpg":
+      return "video/mpeg";
+    case ".ts":
+      return "video/mp2t";
+    case ".mts":
+    case ".m2ts":
+      return "video/mp2t";
+    case ".3gp":
+      return "video/3gpp";
+    case ".ogv":
+      return "video/ogg";
     default:
       return "application/octet-stream";
   }
+}
+
+function getNormalizedExtension(filePath: string) {
+  return path.extname(filePath).toLowerCase().replace(".", "");
+}
+
+function isAllowedContentResource(filePath: string, tipoContenido: "imagen" | "video") {
+  const extension = getNormalizedExtension(filePath);
+  const allowedExtensions = tipoContenido === "imagen" ? IMAGE_EXTENSIONS : VIDEO_EXTENSIONS;
+  return allowedExtensions.includes(extension);
+}
+
+function getResourceDialogConfig(tipoContenido: "imagen" | "video") {
+  if (tipoContenido === "imagen") {
+    return {
+      title: "Seleccionar imagen",
+      filters: [
+        {
+          name: "Imagenes",
+          extensions: IMAGE_EXTENSIONS
+        }
+      ]
+    };
+  }
+
+  return {
+    title: "Seleccionar video",
+    filters: [
+      {
+        name: "Videos",
+        extensions: VIDEO_EXTENSIONS
+      }
+    ]
+  };
 }
 
 function toImageDataUrl(filePath: string | null) {
@@ -201,31 +278,44 @@ function registerIpcHandlers() {
     return getBootstrapData();
   });
   ipcMain.handle("map-icons:update-content", async (_event, payload: UpdateMapIconPlacementContentPayload) => {
+    if ((payload.tipoContenido === "imagen" || payload.tipoContenido === "video") && payload.rutaRecursoLocal) {
+      if (!isAllowedContentResource(payload.rutaRecursoLocal, payload.tipoContenido)) {
+        throw new Error(`El archivo seleccionado no es valido para ${payload.tipoContenido}.`);
+      }
+    }
+
     mapIconPlacementRepository.updateContent(
       payload.placementId,
       payload.tipoContenido,
+      payload.tituloContenido,
       payload.textoDescriptivo,
       payload.rutaRecursoLocal
     );
     return getBootstrapData();
   });
-  ipcMain.handle("content:select-resource", async () => {
+  ipcMain.handle("content:select-resource", async (_event, payload: SelectContentResourcePayload) => {
+    const dialogConfig = getResourceDialogConfig(payload.tipoContenido);
     const result = await dialog.showOpenDialog({
-      title: "Seleccionar recurso",
+      title: dialogConfig.title,
       properties: ["openFile"],
-      filters: [
-        {
-          name: "Archivos compatibles",
-          extensions: ["png", "jpg", "jpeg", "webp", "bmp", "mp4", "webm", "mov"]
-        }
-      ]
+      filters: dialogConfig.filters
     });
 
     if (result.canceled) {
       return null;
     }
 
-    return result.filePaths[0] ?? null;
+    const selectedPath = result.filePaths[0] ?? null;
+
+    if (!selectedPath) {
+      return null;
+    }
+
+    if (!isAllowedContentResource(selectedPath, payload.tipoContenido)) {
+      throw new Error(`El archivo seleccionado no es valido para ${payload.tipoContenido}.`);
+    }
+
+    return selectedPath;
   });
 }
 

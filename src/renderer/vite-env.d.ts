@@ -7,6 +7,7 @@ import type {
   CreateDayPayload,
   DeleteMapIconPlacementPayload,
   DeleteDayIconPayload,
+  SelectContentResourcePayload,
   UpdateMapIconPlacementContentPayload,
   UpdateMapIconPlacementPayload,
   UpdateDayPayload
@@ -27,7 +28,7 @@ declare global {
       updateMapIconPlacement: (payload: UpdateMapIconPlacementPayload) => Promise<BootstrapData>;
       deleteMapIconPlacement: (payload: DeleteMapIconPlacementPayload) => Promise<BootstrapData>;
       updateMapIconPlacementContent: (payload: UpdateMapIconPlacementContentPayload) => Promise<BootstrapData>;
-      selectContentResource: () => Promise<string | null>;
+      selectContentResource: (payload: SelectContentResourcePayload) => Promise<string | null>;
     };
   }
 }

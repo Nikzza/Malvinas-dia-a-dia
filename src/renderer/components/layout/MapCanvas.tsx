@@ -13,6 +13,7 @@ type MapCanvasProps = {
   activeDay: Day | null;
   dragLibraryIcon: DayIcon | null;
   isEditable: boolean;
+  onActivatePlacement?: (placement: MapIconPlacement) => void;
   onCreatePlacement: (libraryIconId: number, posXPct: number, posYPct: number) => Promise<void>;
   onMovePlacement: (placementId: number, posXPct: number, posYPct: number) => Promise<void>;
   onDeletePlacement: (placementId: number) => Promise<void>;
@@ -49,6 +50,7 @@ export function MapCanvas({
   activeDay,
   dragLibraryIcon,
   isEditable,
+  onActivatePlacement,
   onCreatePlacement,
   onDeletePlacement,
   onEditPlacement,
@@ -362,6 +364,14 @@ export function MapCanvas({
                 >
                   <button
                     className="placed-icon-button"
+                    onClick={
+                      !isEditable
+                        ? (event) => {
+                            event.stopPropagation();
+                            onActivatePlacement?.(placement);
+                          }
+                        : undefined
+                    }
                     onPointerDown={
                       isEditable
                         ? (event) => {
