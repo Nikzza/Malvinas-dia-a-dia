@@ -41,6 +41,22 @@ export const dayIconRepository = {
   },
   remove: (iconId: number): void => {
     const db = getDatabase();
-    db.prepare("DELETE FROM iconos_dia WHERE id = ?").run(iconId);
+    const removeIcon = db.transaction(() => {
+      db.prepare(
+        `
+          DELETE FROM transiciones_iconos_mapa
+          WHERE id_colocacion_origen IN (
+            SELECT id FROM iconos_mapa WHERE id_icono_biblioteca = ?
+          )
+          OR id_colocacion_destino IN (
+            SELECT id FROM iconos_mapa WHERE id_icono_biblioteca = ?
+          )
+        `
+      ).run(iconId, iconId);
+      db.prepare("DELETE FROM iconos_mapa WHERE id_icono_biblioteca = ?").run(iconId);
+      db.prepare("DELETE FROM iconos_dia WHERE id = ?").run(iconId);
+    });
+
+    removeIcon();
   }
 };

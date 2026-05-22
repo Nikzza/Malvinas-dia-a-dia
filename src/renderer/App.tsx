@@ -280,10 +280,31 @@ export function App() {
       });
       setData(nextData);
       setError(null);
+      setIsDrawingPanelOpen(false);
       setIsIconsPanelOpen(true);
     } catch (cause: unknown) {
       const message = cause instanceof Error ? cause.message : "No se pudo guardar el icono.";
       setError(message);
+    }
+  }
+
+  function handleToggleDrawingPanel() {
+    const nextIsOpen = !isDrawingPanelOpen;
+
+    setIsDrawingPanelOpen(nextIsOpen);
+
+    if (nextIsOpen) {
+      setIsIconsPanelOpen(false);
+    }
+  }
+
+  function handleToggleIconsPanel() {
+    const nextIsOpen = !isIconsPanelOpen;
+
+    setIsIconsPanelOpen(nextIsOpen);
+
+    if (nextIsOpen) {
+      setIsDrawingPanelOpen(false);
     }
   }
 
@@ -1058,7 +1079,7 @@ export function App() {
           <button
             aria-label="Abrir panel de dibujo"
             className="drawing-toggle"
-            onClick={() => setIsDrawingPanelOpen((current) => !current)}
+            onClick={handleToggleDrawingPanel}
             title="Abrir panel de dibujo"
             type="button"
           >
@@ -1067,7 +1088,7 @@ export function App() {
           <button
             aria-label="Abrir panel de iconos"
             className="icons-toggle"
-            onClick={() => setIsIconsPanelOpen((current) => !current)}
+            onClick={handleToggleIconsPanel}
             title="Abrir panel de iconos"
             type="button"
           >

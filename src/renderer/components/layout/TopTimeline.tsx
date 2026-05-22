@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { WheelEvent as ReactWheelEvent } from "react";
 import type { Day } from "../../../shared/types/day";
 
 type TopTimelineProps = {
@@ -22,10 +23,20 @@ export function TopTimeline({
   onUpdateDay,
   isSavingDay
 }: TopTimelineProps) {
+  const trackRef = useRef<HTMLDivElement | null>(null);
+  const activeDayRef = useRef<HTMLDivElement | null>(null);
   const [isAdding, setIsAdding] = useState(false);
   const [newDayLabel, setNewDayLabel] = useState("");
   const [editingDayId, setEditingDayId] = useState<number | null>(null);
   const [editingLabel, setEditingLabel] = useState("");
+
+  useEffect(() => {
+    activeDayRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "nearest",
+      inline: "center"
+    });
+  }, [activeDayId, days.length]);
 
   async function handleSubmit() {
     const trimmedLabel = newDayLabel.trim();
@@ -51,9 +62,50 @@ export function TopTimeline({
     setEditingLabel("");
   }
 
+  function handleTimelineWheel(event: ReactWheelEvent<HTMLDivElement>) {
+    const track = trackRef.current;
+
+    if (!track) {
+      return;
+    }
+
+    if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    track.scrollBy({
+      left: event.deltaY,
+      behavior: "smooth"
+    });
+  }
+
+  function handleScrollTimeline(direction: -1 | 1) {
+    const track = trackRef.current;
+
+    if (!track) {
+      return;
+    }
+
+    track.scrollBy({
+      left: direction * Math.max(220, track.clientWidth * 0.72),
+      behavior: "smooth"
+    });
+  }
+
   return (
     <header className="timeline-shell">
-      <div className="timeline-track">
+      <button
+        aria-label="Ver dias anteriores"
+        className="timeline-nav-button"
+        onClick={() => handleScrollTimeline(-1)}
+        type="button"
+      >
+        {"<"}
+      </button>
+
+      <div ref={trackRef} className="timeline-track" onWheel={handleTimelineWheel}>
         {days.map((day) =>
           isEditable && editingDayId === day.id ? (
             <div key={day.id} className="timeline-box editing">
@@ -94,7 +146,11 @@ export function TopTimeline({
               </div>
             </div>
           ) : (
-            <div key={day.id} className={day.id === activeDayId ? "timeline-box active" : "timeline-box"}>
+            <div
+              key={day.id}
+              ref={day.id === activeDayId ? activeDayRef : undefined}
+              className={day.id === activeDayId ? "timeline-box active" : "timeline-box"}
+            >
               <button
                 className="timeline-select"
                 onClick={() => onSelectDay(day.id)}
@@ -173,6 +229,15 @@ export function TopTimeline({
           </button>
         ) : null}
       </div>
+
+      <button
+        aria-label="Ver dias siguientes"
+        className="timeline-nav-button"
+        onClick={() => handleScrollTimeline(1)}
+        type="button"
+      >
+        {">"}
+      </button>
     </header>
   );
 }
