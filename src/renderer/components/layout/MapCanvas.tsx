@@ -2,10 +2,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   CSSProperties,
   DragEvent as ReactDragEvent,
+  MouseEvent as ReactMouseEvent,
   PointerEvent as ReactPointerEvent,
   WheelEvent as ReactWheelEvent
 } from "react";
-import type { Day } from "../../../shared/types/day";
+import type { Day, DayBackgroundMediaType } from "../../../shared/types/day";
 import type { MapDrawingLine, MapDrawingLineStyle } from "../../../shared/types/mapDrawingLine";
 import type { DayIcon } from "../../../shared/types/dayIcon";
 import type { MapIconPlacement } from "../../../shared/types/mapIconPlacement";
@@ -14,19 +15,27 @@ import type { MapDrawingTool } from "./MapDrawingLayer";
 
 type MapCanvasProps = {
   activeDay: Day | null;
+  animatedPlacementPositions: Record<number, { x: number; y: number }>;
   drawingLines: MapDrawingLine[];
   drawingLineStyle: MapDrawingLineStyle;
   drawingTool: MapDrawingTool;
   dragLibraryIcon: DayIcon | null;
   isDrawingEnabled: boolean;
   isEditable: boolean;
+  isTransitionEditing: boolean;
   onActivatePlacement?: (placement: MapIconPlacement) => void;
+  onAddTransitionWaypoint: (posXPct: number, posYPct: number) => void;
   onCreateDrawingLine: (pointsPct: number[], style: MapDrawingLineStyle) => Promise<void>;
   onCreatePlacement: (libraryIconId: number, posXPct: number, posYPct: number) => Promise<void>;
   onMovePlacement: (placementId: number, posXPct: number, posYPct: number) => Promise<void>;
+  onMoveTransitionWaypoint: (index: number, posXPct: number, posYPct: number) => void;
   onDeletePlacement: (placementId: number) => Promise<void>;
   onEditPlacement: (placement: MapIconPlacement) => void;
+  onEditTransition: (placement: MapIconPlacement) => void;
   placements: MapIconPlacement[];
+  transitionEditorSourcePlacement: MapIconPlacement | null;
+  transitionEditorTargetPlacement: MapIconPlacement | null;
+  transitionWaypointPointsPct: number[];
 };
 
 type Point = {
@@ -54,36 +63,63 @@ function clampPct(value: number) {
   return clamp(value, 0, 100);
 }
 
+function toSvgPolylinePoints(pointsPct: number[], width: number, height: number) {
+  const points: string[] = [];
+
+  for (let index = 0; index < pointsPct.length; index += 2) {
+    points.push(`${(pointsPct[index] / 100) * width},${(pointsPct[index + 1] / 100) * height}`);
+  }
+
+  return points.join(" ");
+}
+
 export function MapCanvas({
   activeDay,
+  animatedPlacementPositions,
   drawingLines,
   drawingLineStyle,
   drawingTool,
   dragLibraryIcon,
   isDrawingEnabled,
   isEditable,
+  isTransitionEditing,
   onActivatePlacement,
+  onAddTransitionWaypoint,
   onCreateDrawingLine,
   onCreatePlacement,
   onDeletePlacement,
   onEditPlacement,
+  onEditTransition,
   onMovePlacement,
+  onMoveTransitionWaypoint,
   placements
+  ,
+  transitionEditorSourcePlacement,
+  transitionEditorTargetPlacement,
+  transitionWaypointPointsPct
 }: MapCanvasProps) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const placementDragStartRef = useRef<Point | null>(null);
   const placementOriginRef = useRef<{ posXPct: number; posYPct: number } | null>(null);
   const mapPanStartRef = useRef<Point | null>(null);
   const panOriginRef = useRef<Point>({ x: 0, y: 0 });
+  const transitionWaypointDragIndexRef = useRef<number | null>(null);
 
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
-  const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
-  const [displayMapSource, setDisplayMapSource] = useState<string | null>(null);
+  const [mediaSize, setMediaSize] = useState({ width: 0, height: 0 });
+  const [displayMediaSource, setDisplayMediaSource] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState<Point>({ x: 0, y: 0 });
-  const [imageLoadFailed, setImageLoadFailed] = useState(false);
+  const [mediaLoadFailed, setMediaLoadFailed] = useState(false);
 
-  const mapSource = useMemo(() => activeDay?.imagenFondoDataUrl ?? null, [activeDay?.imagenFondoDataUrl]);
+  const backgroundSource = useMemo(
+    () => activeDay?.fondoMediaDataUrl ?? activeDay?.imagenFondoDataUrl ?? null,
+    [activeDay?.fondoMediaDataUrl, activeDay?.imagenFondoDataUrl]
+  );
+  const backgroundMediaType = useMemo<DayBackgroundMediaType | null>(
+    () => activeDay?.tipoFondoMedia ?? (backgroundSource ? "imagen" : null),
+    [activeDay?.tipoFondoMedia, backgroundSource]
+  );
 
   useEffect(() => {
     const viewport = viewportRef.current;
@@ -111,20 +147,20 @@ export function MapCanvas({
   }, []);
 
   const baseScale = useMemo(() => {
-    if (!viewportSize.width || !viewportSize.height || !imageSize.width || !imageSize.height) {
+    if (!viewportSize.width || !viewportSize.height || !mediaSize.width || !mediaSize.height) {
       return 1;
     }
 
-    return Math.max(viewportSize.width / imageSize.width, viewportSize.height / imageSize.height);
-  }, [imageSize.height, imageSize.width, viewportSize.height, viewportSize.width]);
+    return Math.max(viewportSize.width / mediaSize.width, viewportSize.height / mediaSize.height);
+  }, [mediaSize.height, mediaSize.width, viewportSize.height, viewportSize.width]);
 
   const containScale = useMemo(() => {
-    if (!viewportSize.width || !viewportSize.height || !imageSize.width || !imageSize.height) {
+    if (!viewportSize.width || !viewportSize.height || !mediaSize.width || !mediaSize.height) {
       return 1;
     }
 
-    return Math.min(viewportSize.width / imageSize.width, viewportSize.height / imageSize.height);
-  }, [imageSize.height, imageSize.width, viewportSize.height, viewportSize.width]);
+    return Math.min(viewportSize.width / mediaSize.width, viewportSize.height / mediaSize.height);
+  }, [mediaSize.height, mediaSize.width, viewportSize.height, viewportSize.width]);
 
   const minZoom = useMemo(() => {
     if (!baseScale || !containScale) {
@@ -139,37 +175,42 @@ export function MapCanvas({
     setPan({ x: 0, y: 0 });
   }, [minZoom]);
 
-  const renderedWidth = imageSize.width * baseScale * zoom;
-  const renderedHeight = imageSize.height * baseScale * zoom;
+  const renderedWidth = mediaSize.width * baseScale * zoom;
+  const renderedHeight = mediaSize.height * baseScale * zoom;
   const imageLeft = (viewportSize.width - renderedWidth) / 2 + pan.x;
   const imageTop = (viewportSize.height - renderedHeight) / 2 + pan.y;
 
   useEffect(() => {
-    setImageLoadFailed(false);
-    setImageSize({ width: 0, height: 0 });
+    setMediaLoadFailed(false);
+    setMediaSize({ width: 0, height: 0 });
 
-    if (!mapSource) {
-      setDisplayMapSource(null);
+    if (!backgroundSource) {
+      setDisplayMediaSource(null);
+      return;
+    }
+
+    if (backgroundMediaType === "video") {
+      setDisplayMediaSource(backgroundSource);
       return;
     }
 
     const preloadImage = new window.Image();
 
     preloadImage.onload = () => {
-      setImageSize({
+      setMediaSize({
         width: preloadImage.naturalWidth,
         height: preloadImage.naturalHeight
       });
-      setDisplayMapSource(mapSource);
+      setDisplayMediaSource(backgroundSource);
     };
 
     preloadImage.onerror = () => {
-      setImageLoadFailed(true);
-      setDisplayMapSource(null);
+      setMediaLoadFailed(true);
+      setDisplayMediaSource(null);
     };
 
-    preloadImage.src = mapSource;
-  }, [mapSource]);
+    preloadImage.src = backgroundSource;
+  }, [backgroundMediaType, backgroundSource]);
 
   useEffect(() => {
     if (!renderedWidth || !renderedHeight) {
@@ -192,6 +233,17 @@ export function MapCanvas({
       y: clampPct((relativeY / renderedHeight) * 100)
     };
   }
+
+  const transitionPreviewPointsPct =
+    transitionEditorSourcePlacement && transitionEditorTargetPlacement
+      ? [
+          transitionEditorSourcePlacement.posXPct,
+          transitionEditorSourcePlacement.posYPct,
+          ...transitionWaypointPointsPct,
+          transitionEditorTargetPlacement.posXPct,
+          transitionEditorTargetPlacement.posYPct
+        ]
+      : [];
 
   async function handlePlacementPointerMove(event: ReactPointerEvent<HTMLButtonElement>, placement: MapIconPlacement) {
     if (!placementDragStartRef.current || placementOriginRef.current === null) {
@@ -233,10 +285,41 @@ export function MapCanvas({
     await onCreatePlacement(dragLibraryIcon.id, pct.x, pct.y);
   }
 
+  function handleTransitionWaypointPointerDown(event: ReactPointerEvent<HTMLButtonElement>, index: number) {
+    event.stopPropagation();
+    event.preventDefault();
+    transitionWaypointDragIndexRef.current = index;
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function handleTransitionWaypointPointerMove(event: ReactPointerEvent<HTMLButtonElement>) {
+    if (transitionWaypointDragIndexRef.current === null) {
+      return;
+    }
+
+    const pct = getPctFromPointer(event.clientX, event.clientY);
+
+    if (!pct) {
+      return;
+    }
+
+    event.preventDefault();
+    onMoveTransitionWaypoint(transitionWaypointDragIndexRef.current, pct.x, pct.y);
+  }
+
+  function handleTransitionWaypointPointerUp(event: ReactPointerEvent<HTMLButtonElement>) {
+    if (transitionWaypointDragIndexRef.current === null) {
+      return;
+    }
+
+    transitionWaypointDragIndexRef.current = null;
+    event.currentTarget.releasePointerCapture(event.pointerId);
+  }
+
   function handleWheel(event: ReactWheelEvent<HTMLDivElement>) {
     event.preventDefault();
 
-    if (!imageSize.width || !imageSize.height || !viewportSize.width || !viewportSize.height) {
+    if (!mediaSize.width || !mediaSize.height || !viewportSize.width || !viewportSize.height) {
       return;
     }
 
@@ -260,8 +343,8 @@ export function MapCanvas({
     const currentImageTop = (viewportSize.height - renderedHeight) / 2 + pan.y;
     const imageRelativeX = renderedWidth ? (pointerX - currentImageLeft) / renderedWidth : 0.5;
     const imageRelativeY = renderedHeight ? (pointerY - currentImageTop) / renderedHeight : 0.5;
-    const nextRenderedWidth = imageSize.width * baseScale * nextZoom;
-    const nextRenderedHeight = imageSize.height * baseScale * nextZoom;
+    const nextRenderedWidth = mediaSize.width * baseScale * nextZoom;
+    const nextRenderedHeight = mediaSize.height * baseScale * nextZoom;
     const unclampedPan = {
       x: pointerX - imageRelativeX * nextRenderedWidth - (viewportSize.width - nextRenderedWidth) / 2,
       y: pointerY - imageRelativeY * nextRenderedHeight - (viewportSize.height - nextRenderedHeight) / 2
@@ -278,11 +361,11 @@ export function MapCanvas({
       return;
     }
 
-    if (isDrawingEnabled) {
+    if (isDrawingEnabled || isTransitionEditing) {
       return;
     }
 
-    if (!displayMapSource) {
+    if (!displayMediaSource) {
       return;
     }
 
@@ -327,6 +410,26 @@ export function MapCanvas({
     event.currentTarget.releasePointerCapture(event.pointerId);
   }
 
+  function handleViewportClick(event: ReactMouseEvent<HTMLDivElement>) {
+    if (!isTransitionEditing) {
+      return;
+    }
+
+    const target = event.target;
+
+    if (target instanceof HTMLElement && target.closest(".placed-icon-wrap, .transition-waypoint")) {
+      return;
+    }
+
+    const pct = getPctFromPointer(event.clientX, event.clientY);
+
+    if (!pct) {
+      return;
+    }
+
+    onAddTransitionWaypoint(pct.x, pct.y);
+  }
+
   const imageStyle: CSSProperties = {
     width: `${renderedWidth}px`,
     height: `${renderedHeight}px`,
@@ -346,28 +449,49 @@ export function MapCanvas({
           }
         }}
         onDrop={(event) => void handleDrop(event)}
+        onClick={handleViewportClick}
         onPointerCancel={handleViewportPointerUp}
         onPointerDown={handleViewportPointerDown}
         onPointerMove={handleViewportPointerMove}
         onPointerUp={handleViewportPointerUp}
         onWheel={handleWheel}
       >
-        {displayMapSource && !imageLoadFailed ? (
+        {displayMediaSource && !mediaLoadFailed ? (
           <>
-            <img
-              alt={activeDay?.etiquetaFecha ?? "Mapa de las Islas Malvinas"}
-              className="map-image"
-              draggable={false}
-              onError={() => setImageLoadFailed(true)}
-              onLoad={(event) =>
-                setImageSize({
-                  width: event.currentTarget.naturalWidth,
-                  height: event.currentTarget.naturalHeight
-                })
-              }
-              src={displayMapSource}
-              style={imageStyle}
-            />
+            {backgroundMediaType === "video" ? (
+              <video
+                aria-label={activeDay?.etiquetaFecha ?? "Fondo del mapa de las Islas Malvinas"}
+                autoPlay
+                className="map-video"
+                loop
+                muted
+                onError={() => setMediaLoadFailed(true)}
+                onLoadedMetadata={(event) =>
+                  setMediaSize({
+                    width: event.currentTarget.videoWidth,
+                    height: event.currentTarget.videoHeight
+                  })
+                }
+                playsInline
+                src={displayMediaSource}
+                style={imageStyle}
+              />
+            ) : (
+              <img
+                alt={activeDay?.etiquetaFecha ?? "Mapa de las Islas Malvinas"}
+                className="map-image"
+                draggable={false}
+                onError={() => setMediaLoadFailed(true)}
+                onLoad={(event) =>
+                  setMediaSize({
+                    width: event.currentTarget.naturalWidth,
+                    height: event.currentTarget.naturalHeight
+                  })
+                }
+                src={displayMediaSource}
+                style={imageStyle}
+              />
+            )}
 
             <div className="drawing-layer-surface" style={imageStyle}>
               <div className="drawing-layer-wrap" style={{ width: `${renderedWidth}px`, height: `${renderedHeight}px` }}>
@@ -384,13 +508,60 @@ export function MapCanvas({
             </div>
 
             <div className="placed-icons-layer" style={imageStyle}>
+              {transitionPreviewPointsPct.length >= 4 ? (
+                <svg className="transition-overlay" height={renderedHeight} width={renderedWidth}>
+                  <polyline
+                    className="transition-path-line"
+                    points={toSvgPolylinePoints(transitionPreviewPointsPct, renderedWidth, renderedHeight)}
+                  />
+                </svg>
+              ) : null}
+
+              {transitionEditorSourcePlacement ? (
+                <div
+                  className="transition-endpoint-marker source"
+                  style={{
+                    left: `${transitionEditorSourcePlacement.posXPct}%`,
+                    top: `${transitionEditorSourcePlacement.posYPct}%`
+                  }}
+                />
+              ) : null}
+
+              {transitionEditorTargetPlacement ? (
+                <div
+                  className="transition-endpoint-marker target"
+                  style={{
+                    left: `${transitionEditorTargetPlacement.posXPct}%`,
+                    top: `${transitionEditorTargetPlacement.posYPct}%`
+                  }}
+                />
+              ) : null}
+
+              {transitionWaypointPointsPct.map((_, index) =>
+                index % 2 === 0 ? (
+                  <button
+                    key={`transition-waypoint-${index / 2}`}
+                    className="transition-waypoint"
+                    onPointerCancel={handleTransitionWaypointPointerUp}
+                    onPointerDown={(event) => handleTransitionWaypointPointerDown(event, index / 2)}
+                    onPointerMove={handleTransitionWaypointPointerMove}
+                    onPointerUp={handleTransitionWaypointPointerUp}
+                    style={{
+                      left: `${transitionWaypointPointsPct[index]}%`,
+                      top: `${transitionWaypointPointsPct[index + 1]}%`
+                    }}
+                    type="button"
+                  />
+                ) : null
+              )}
+
               {placements.map((placement) => (
                 <div
                   key={placement.id}
                   className="placed-icon-wrap"
                   style={{
-                    left: `${placement.posXPct}%`,
-                    top: `${placement.posYPct}%`
+                    left: `${(animatedPlacementPositions[placement.id]?.x ?? placement.posXPct)}%`,
+                    top: `${(animatedPlacementPositions[placement.id]?.y ?? placement.posYPct)}%`
                   }}
                 >
                   <button
@@ -474,6 +645,17 @@ export function MapCanvas({
                         type="button"
                       >
                         ...
+                      </button>
+                      <button
+                        className="placed-icon-transition"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onEditTransition(placement);
+                        }}
+                        onPointerDown={(event) => event.stopPropagation()}
+                        type="button"
+                      >
+                        →
                       </button>
                     </>
                   ) : null}

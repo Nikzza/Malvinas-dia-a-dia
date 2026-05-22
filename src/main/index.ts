@@ -4,21 +4,25 @@ import path from "node:path";
 import { createMainWindow } from "./window";
 import { initDatabase, getDatabaseInfo } from "../db/connection";
 import { dayRepository } from "../db/repositories/dayRepository";
-import type { Day } from "../shared/types/day";
+import type { Day, DayBackgroundMediaType } from "../shared/types/day";
 import type { MapDrawingLine } from "../shared/types/mapDrawingLine";
 import type { DayIcon } from "../shared/types/dayIcon";
 import type { MapIconPlacement } from "../shared/types/mapIconPlacement";
+import type { MapIconTransition } from "../shared/types/mapIconTransition";
 import { dayIconRepository } from "../db/repositories/dayIconRepository";
 import { mapDrawingLineRepository } from "../db/repositories/mapDrawingLineRepository";
 import { mapIconPlacementRepository } from "../db/repositories/mapIconPlacementRepository";
+import { mapIconTransitionRepository } from "../db/repositories/mapIconTransitionRepository";
 import type {
   CreateMapIconPlacementPayload,
   CreateMapDrawingLinePayload,
   CreateDayIconPayload,
   CreateDayPayload,
   DeleteMapDrawingLinePayload,
+  DeleteMapIconTransitionPayload,
   DeleteMapIconPlacementPayload,
   DeleteDayIconPayload,
+  UpsertMapIconTransitionPayload,
   SelectContentResourcePayload,
   UpdateMapIconPlacementContentPayload,
   UpdateMapIconPlacementPayload,
@@ -133,10 +137,30 @@ function toImageDataUrl(filePath: string | null) {
   }
 }
 
+function getDayBackgroundMediaType(filePath: string | null): DayBackgroundMediaType | null {
+  if (!filePath) {
+    return null;
+  }
+
+  const extension = getNormalizedExtension(filePath);
+
+  if (VIDEO_EXTENSIONS.includes(extension)) {
+    return "video";
+  }
+
+  if (IMAGE_EXTENSIONS.includes(extension)) {
+    return "imagen";
+  }
+
+  return null;
+}
+
 function enrichDays(days: Day[]) {
   return days.map((day) => ({
     ...day,
-    imagenFondoDataUrl: toImageDataUrl(day.rutaImagenFondo)
+    imagenFondoDataUrl: toImageDataUrl(day.rutaImagenFondo),
+    fondoMediaDataUrl: toImageDataUrl(day.rutaImagenFondo),
+    tipoFondoMedia: getDayBackgroundMediaType(day.rutaImagenFondo)
   }));
 }
 
@@ -192,6 +216,7 @@ function getBootstrapData() {
   const info = getDatabaseInfo();
   const icons = dayIconRepository.listAll();
   const drawingLines = mapDrawingLineRepository.listAll();
+  const transitions = mapIconTransitionRepository.listAll();
 
   return {
     appName: "Malvinas dia a dia",
@@ -200,7 +225,8 @@ function getBootstrapData() {
     days: enrichDays(dayRepository.list()),
     iconsByDay: enrichIconsByDay(icons),
     mapDrawingLinesByDay: groupMapDrawingLinesByDay(drawingLines),
-    mapPlacementsByDay: enrichMapPlacementsByDay(mapIconPlacementRepository.listAll(), icons)
+    mapPlacementsByDay: enrichMapPlacementsByDay(mapIconPlacementRepository.listAll(), icons),
+    mapIconTransitions: transitions
   };
 }
 
@@ -232,12 +258,20 @@ function registerIpcHandlers() {
   });
   ipcMain.handle("days:select-background", async () => {
     const result = await dialog.showOpenDialog({
-      title: "Seleccionar imagen de fondo",
+      title: "Seleccionar fondo del dia",
       properties: ["openFile"],
       filters: [
         {
-          name: "Imagenes",
-          extensions: ["png", "jpg", "jpeg", "webp", "bmp"]
+          name: "Fondos compatibles",
+          extensions: [...IMAGE_EXTENSIONS, "mp4", "webm", "mov"]
+        },
+        {
+          name: "Imagenes y GIF",
+          extensions: IMAGE_EXTENSIONS
+        },
+        {
+          name: "Videos",
+          extensions: ["mp4", "webm", "mov"]
         }
       ]
     });
@@ -296,6 +330,22 @@ function registerIpcHandlers() {
   });
   ipcMain.handle("map-lines:delete", async (_event, payload: DeleteMapDrawingLinePayload) => {
     mapDrawingLineRepository.remove(payload.lineId);
+    return getBootstrapData();
+  });
+  ipcMain.handle("map-transitions:upsert", async (_event, payload: UpsertMapIconTransitionPayload) => {
+    if (!payload.sourcePlacementId || !payload.targetPlacementId) {
+      throw new Error("La transicion necesita origen y destino.");
+    }
+
+    if (!Array.isArray(payload.pointsPct) || payload.pointsPct.length < 4) {
+      throw new Error("La transicion no tiene suficientes puntos.");
+    }
+
+    mapIconTransitionRepository.upsert(payload.sourcePlacementId, payload.targetPlacementId, payload.pointsPct);
+    return getBootstrapData();
+  });
+  ipcMain.handle("map-transitions:delete", async (_event, payload: DeleteMapIconTransitionPayload) => {
+    mapIconTransitionRepository.remove(payload.transitionId);
     return getBootstrapData();
   });
   ipcMain.handle("map-icons:create", async (_event, payload: CreateMapIconPlacementPayload) => {

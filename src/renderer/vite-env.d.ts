@@ -7,9 +7,11 @@ import type {
   CreateDayIconPayload,
   CreateDayPayload,
   DeleteMapDrawingLinePayload,
+  DeleteMapIconTransitionPayload,
   DeleteMapIconPlacementPayload,
   DeleteDayIconPayload,
   SelectContentResourcePayload,
+  UpsertMapIconTransitionPayload,
   UpdateMapIconPlacementContentPayload,
   UpdateMapIconPlacementPayload,
   UpdateDayPayload
@@ -28,6 +30,8 @@ declare global {
       deleteDayIcon: (payload: DeleteDayIconPayload) => Promise<BootstrapData>;
       createMapDrawingLine: (payload: CreateMapDrawingLinePayload) => Promise<BootstrapData>;
       deleteMapDrawingLine: (payload: DeleteMapDrawingLinePayload) => Promise<BootstrapData>;
+      upsertMapIconTransition: (payload: UpsertMapIconTransitionPayload) => Promise<BootstrapData>;
+      deleteMapIconTransition: (payload: DeleteMapIconTransitionPayload) => Promise<BootstrapData>;
       createMapIconPlacement: (payload: CreateMapIconPlacementPayload) => Promise<BootstrapData>;
       updateMapIconPlacement: (payload: UpdateMapIconPlacementPayload) => Promise<BootstrapData>;
       deleteMapIconPlacement: (payload: DeleteMapIconPlacementPayload) => Promise<BootstrapData>;

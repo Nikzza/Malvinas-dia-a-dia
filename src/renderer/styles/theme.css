@@ -177,6 +177,85 @@ body {
   font-size: 0.95rem;
 }
 
+.transition-toggle-button {
+  position: absolute;
+  top: 18px;
+  right: 346px;
+  z-index: 5;
+  padding: 10px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: rgba(8, 17, 29, 0.72);
+  backdrop-filter: blur(12px);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 0.95rem;
+}
+
+.transition-toggle-button.active {
+  background: rgba(246, 217, 141, 0.92);
+  color: #111;
+  border-color: rgba(246, 217, 141, 0.95);
+}
+
+.map-scene-wrap {
+  position: absolute;
+  inset: 0;
+  transform-origin: 50% 50%;
+}
+
+.day-cloud-transition {
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.day-cloud-transition-veil {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 50% 45%, rgba(244, 248, 250, 0.18), transparent 26%),
+    linear-gradient(180deg, rgba(215, 224, 228, 0.18), rgba(192, 202, 210, 0.26)),
+    radial-gradient(circle at 50% 50%, rgba(120, 136, 148, 0.18), transparent 62%);
+  backdrop-filter: blur(6px);
+}
+
+.day-cloud-puff {
+  position: absolute;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 38% 38%, rgba(255, 255, 255, 0.98), rgba(245, 249, 252, 0.92) 34%, rgba(214, 223, 228, 0.68) 64%, rgba(214, 223, 228, 0) 100%);
+  box-shadow:
+    0 0 34px rgba(255, 255, 255, 0.32),
+    0 20px 52px rgba(201, 214, 224, 0.16);
+}
+
+.day-cloud-puff::before,
+.day-cloud-puff::after {
+  content: "";
+  position: absolute;
+  border-radius: 999px;
+  background: inherit;
+}
+
+.day-cloud-puff::before {
+  width: 52%;
+  height: 58%;
+  left: 8%;
+  top: 18%;
+}
+
+.day-cloud-puff::after {
+  width: 58%;
+  height: 62%;
+  right: 8%;
+  top: 8%;
+}
+
 .timeline-shell {
   position: absolute;
   top: 18px;
@@ -435,6 +514,14 @@ body {
   pointer-events: none;
 }
 
+.map-video {
+  position: absolute;
+  max-width: none;
+  object-fit: fill;
+  user-select: none;
+  pointer-events: none;
+}
+
 .map-empty {
   position: absolute;
   inset: 0;
@@ -444,6 +531,51 @@ body {
 .placed-icons-layer {
   position: absolute;
   pointer-events: none;
+}
+
+.transition-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.transition-path-line {
+  fill: none;
+  stroke: #f6d98d;
+  stroke-width: 6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.28));
+}
+
+.transition-endpoint-marker,
+.transition-waypoint {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  border-radius: 999px;
+  z-index: 4;
+}
+
+.transition-endpoint-marker {
+  width: 16px;
+  height: 16px;
+  border: 3px solid rgba(7, 18, 39, 0.95);
+  background: #f6d98d;
+  pointer-events: none;
+}
+
+.transition-endpoint-marker.target {
+  background: #8be9a6;
+}
+
+.transition-waypoint {
+  width: 18px;
+  height: 18px;
+  border: 3px solid #111;
+  background: #fff;
+  pointer-events: auto;
+  cursor: move;
 }
 
 .drawing-layer-surface {
@@ -621,6 +753,21 @@ body {
   pointer-events: auto;
 }
 
+.placed-icon-transition {
+  position: absolute;
+  left: -12px;
+  top: -8px;
+  width: 24px;
+  height: 24px;
+  border: 2px solid #111;
+  border-radius: 999px;
+  background: #f6d98d;
+  color: #111;
+  font: inherit;
+  z-index: 2;
+  pointer-events: auto;
+}
+
 .error-toast {
   position: absolute;
   left: 20px;
@@ -681,6 +828,81 @@ body {
   border-radius: 22px;
   background: rgba(8, 17, 29, 0.86);
   backdrop-filter: blur(12px);
+}
+
+.transition-panel {
+  position: absolute;
+  right: 20px;
+  bottom: 248px;
+  z-index: 7;
+  width: 320px;
+  padding: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 22px;
+  background: rgba(8, 17, 29, 0.9);
+  backdrop-filter: blur(12px);
+}
+
+.transition-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.transition-close,
+.transition-action-button {
+  border: 2px solid #111;
+  border-radius: 12px;
+  background: #fff;
+  color: #111;
+  font: inherit;
+}
+
+.transition-close {
+  width: 32px;
+  height: 32px;
+}
+
+.transition-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 0.95rem;
+}
+
+.transition-arrow {
+  color: #f6d98d;
+  font-weight: 700;
+}
+
+.transition-hint,
+.transition-points-count {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+
+.transition-action-button {
+  width: 100%;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+
+.transition-action-button.save {
+  background: #f6d98d;
+}
+
+.transition-action-button.secondary {
+  background: rgba(255, 255, 255, 0.96);
 }
 
 .drawing-panel-header {
@@ -1015,6 +1237,12 @@ body {
     bottom: 12px;
   }
 
+  .transition-toggle-button {
+    top: auto;
+    right: 12px;
+    bottom: 64px;
+  }
+
   .drawing-toggle {
     right: 12px;
     bottom: 84px;
@@ -1029,6 +1257,12 @@ body {
     right: 12px;
     bottom: 156px;
     width: min(280px, calc(100vw - 24px));
+  }
+
+  .transition-panel {
+    right: 12px;
+    bottom: 308px;
+    width: min(320px, calc(100vw - 24px));
   }
 
   .timeline-shell {

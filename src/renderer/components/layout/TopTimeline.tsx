@@ -96,10 +96,10 @@ export function TopTimeline({
                   value={editingLabel}
                 />
                 <button
-                  aria-label="Elegir imagen de fondo"
+                  aria-label="Elegir fondo del dia"
                   className="timeline-icon-button"
                   onClick={() => void handlePickImage("edit")}
-                  title="Elegir imagen de fondo"
+                  title="Elegir fondo del dia"
                   type="button"
                 >
                   <span className="folder-icon" aria-hidden="true" />
@@ -178,15 +178,15 @@ export function TopTimeline({
                 type="text"
                 value={newDayLabel}
               />
-              <button
-                aria-label="Elegir imagen de fondo"
-                className="timeline-icon-button"
-                onClick={() => void handlePickImage("new")}
-                title="Elegir imagen de fondo"
-                type="button"
-              >
-                <span className="folder-icon" aria-hidden="true" />
-              </button>
+                <button
+                  aria-label="Elegir fondo del dia"
+                  className="timeline-icon-button"
+                  onClick={() => void handlePickImage("new")}
+                  title="Elegir fondo del dia"
+                  type="button"
+                >
+                  <span className="folder-icon" aria-hidden="true" />
+                </button>
             </div>
 
             <div className="timeline-edit-actions">

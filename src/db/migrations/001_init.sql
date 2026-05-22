@@ -55,3 +55,14 @@ CREATE TABLE IF NOT EXISTS lineas_mapa (
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (id_dia) REFERENCES dias(id)
 );
+
+CREATE TABLE IF NOT EXISTS transiciones_iconos_mapa (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id_colocacion_origen INTEGER NOT NULL,
+  id_colocacion_destino INTEGER NOT NULL,
+  puntos_pct_json TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (id_colocacion_origen) REFERENCES iconos_mapa(id),
+  FOREIGN KEY (id_colocacion_destino) REFERENCES iconos_mapa(id)
+);

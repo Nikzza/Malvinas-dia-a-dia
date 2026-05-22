@@ -79,6 +79,12 @@ export const mapIconPlacementRepository = {
   },
   remove: (placementId: number): void => {
     const db = getDatabase();
+    db.prepare(
+      `
+        DELETE FROM transiciones_iconos_mapa
+        WHERE id_colocacion_origen = ? OR id_colocacion_destino = ?
+      `
+    ).run(placementId, placementId);
     db.prepare("DELETE FROM iconos_mapa WHERE id = ?").run(placementId);
   }
 };

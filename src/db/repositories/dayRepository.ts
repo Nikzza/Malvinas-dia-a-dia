@@ -69,6 +69,17 @@ export const dayRepository = {
   remove: (id: number): void => {
     const db = getDatabase();
     db.prepare("DELETE FROM lineas_mapa WHERE id_dia = ?").run(id);
+    db.prepare(
+      `
+        DELETE FROM transiciones_iconos_mapa
+        WHERE id_colocacion_origen IN (
+          SELECT id FROM iconos_mapa WHERE id_dia = ?
+        )
+        OR id_colocacion_destino IN (
+          SELECT id FROM iconos_mapa WHERE id_dia = ?
+        )
+      `
+    ).run(id, id);
     db.prepare("DELETE FROM iconos_mapa WHERE id_dia = ?").run(id);
     db.prepare("DELETE FROM iconos_dia WHERE id_dia = ?").run(id);
     db.prepare("DELETE FROM eventos WHERE id_dia = ?").run(id);

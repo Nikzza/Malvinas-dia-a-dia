@@ -6,9 +6,11 @@ import type {
   CreateDayIconPayload,
   CreateDayPayload,
   DeleteMapDrawingLinePayload,
+  DeleteMapIconTransitionPayload,
   DeleteMapIconPlacementPayload,
   DeleteDayIconPayload,
   SelectContentResourcePayload,
+  UpsertMapIconTransitionPayload,
   UpdateMapIconPlacementContentPayload,
   UpdateMapIconPlacementPayload,
   UpdateDayPayload
@@ -27,6 +29,10 @@ const api = {
     ipcRenderer.invoke("map-lines:create", payload) as Promise<BootstrapData>,
   deleteMapDrawingLine: (payload: DeleteMapDrawingLinePayload) =>
     ipcRenderer.invoke("map-lines:delete", payload) as Promise<BootstrapData>,
+  upsertMapIconTransition: (payload: UpsertMapIconTransitionPayload) =>
+    ipcRenderer.invoke("map-transitions:upsert", payload) as Promise<BootstrapData>,
+  deleteMapIconTransition: (payload: DeleteMapIconTransitionPayload) =>
+    ipcRenderer.invoke("map-transitions:delete", payload) as Promise<BootstrapData>,
   createMapIconPlacement: (payload: CreateMapIconPlacementPayload) =>
     ipcRenderer.invoke("map-icons:create", payload) as Promise<BootstrapData>,
   updateMapIconPlacement: (payload: UpdateMapIconPlacementPayload) =>

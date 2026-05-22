@@ -1,9 +1,11 @@
-import { useEffect, useState } from "react";
-import type { ChangeEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties, ChangeEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
+import { gsap } from "gsap";
 import type { BootstrapData } from "../shared/types/ipc";
 import type { MapDrawingLineStyle } from "../shared/types/mapDrawingLine";
 import type { DayIcon } from "../shared/types/dayIcon";
 import type { MapIconPlacement } from "../shared/types/mapIconPlacement";
+import type { MapIconTransition } from "../shared/types/mapIconTransition";
 import type { MapDrawingTool } from "./components/layout/MapDrawingLayer";
 import { MapCanvas } from "./components/layout/MapCanvas";
 import { TopTimeline } from "./components/layout/TopTimeline";
@@ -11,6 +13,26 @@ import { TopTimeline } from "./components/layout/TopTimeline";
 type AppMode = "menu" | "edit" | "view";
 type MediaContentType = "imagen" | "video";
 const EDIT_PASSWORD = "1111";
+const TRANSITION_ANIMATION_MS = 1800;
+
+type TransitionEditingState = {
+  transitionId: number | null;
+  sourcePlacementId: number;
+  targetPlacementId: number;
+  waypointPointsPct: number[];
+};
+
+const CLOUD_TRANSITION_LAYOUT = [
+  { left: "8%", top: "12%", width: 280, height: 150, delay: 0 },
+  { left: "24%", top: "4%", width: 340, height: 170, delay: 0.04 },
+  { left: "56%", top: "8%", width: 320, height: 164, delay: 0.08 },
+  { left: "76%", top: "18%", width: 260, height: 142, delay: 0.12 },
+  { left: "14%", top: "46%", width: 360, height: 182, delay: 0.05 },
+  { left: "48%", top: "40%", width: 390, height: 190, delay: 0.1 },
+  { left: "74%", top: "54%", width: 280, height: 148, delay: 0.16 },
+  { left: "22%", top: "74%", width: 300, height: 152, delay: 0.09 },
+  { left: "58%", top: "76%", width: 340, height: 168, delay: 0.13 }
+] as const;
 
 export function App() {
   const [data, setData] = useState<BootstrapData | null>(null);
@@ -30,9 +52,16 @@ export function App() {
   const [drawingTool, setDrawingTool] = useState<MapDrawingTool>("freehand");
   const [mode, setMode] = useState<AppMode>("menu");
   const [selectedPlacement, setSelectedPlacement] = useState<MapIconPlacement | null>(null);
+  const [transitionEditing, setTransitionEditing] = useState<TransitionEditingState | null>(null);
+  const [animatedPlacementPositions, setAnimatedPlacementPositions] = useState<Record<number, { x: number; y: number }>>({});
   const [isEditPasswordOpen, setIsEditPasswordOpen] = useState(false);
   const [editPasswordDigits, setEditPasswordDigits] = useState(["", "", "", ""]);
   const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [isDayTransitionRunning, setIsDayTransitionRunning] = useState(false);
+  const [isCloudTransitionEnabled, setIsCloudTransitionEnabled] = useState(false);
+  const mapSceneRef = useRef<HTMLDivElement | null>(null);
+  const cloudTransitionRef = useRef<HTMLDivElement | null>(null);
+  const cloudRefs = useRef<Array<HTMLDivElement | null>>([]);
 
   useEffect(() => {
     window.mapaMalvinas
@@ -53,15 +82,29 @@ export function App() {
   }, [data]);
 
   const activeDay = data?.days.find((day) => day.id === activeDayId) ?? null;
+  const days = data?.days ?? [];
   const iconsLibrary = Object.values(data?.iconsByDay ?? {}).flat();
   const activeDrawingLines = activeDayId ? data?.mapDrawingLinesByDay[activeDayId] ?? [] : [];
   const activeMapPlacements = activeDayId ? data?.mapPlacementsByDay[activeDayId] ?? [] : [];
+  const allMapPlacements = useMemo(() => Object.values(data?.mapPlacementsByDay ?? {}).flat(), [data?.mapPlacementsByDay]);
+  const placementById = useMemo(() => new Map(allMapPlacements.map((placement) => [placement.id, placement] as const)), [allMapPlacements]);
+  const transitions = data?.mapIconTransitions ?? [];
   const isEditMode = mode === "edit";
   const isViewMode = mode === "view";
+  const isReadOnlyMode = isViewMode;
+  const previousActiveDayIdRef = useRef<number | null>(null);
+  const transitionSourcePlacement = transitionEditing ? placementById.get(transitionEditing.sourcePlacementId) ?? null : null;
+  const transitionTargetPlacement = transitionEditing ? placementById.get(transitionEditing.targetPlacementId) ?? null : null;
+
+  function setCloudRef(index: number, element: HTMLDivElement | null) {
+    cloudRefs.current[index] = element;
+  }
 
   useEffect(() => {
     setSelectedPlacement(null);
     setIsDrawingEnabled(false);
+    setTransitionEditing(null);
+    setAnimatedPlacementPositions({});
   }, [activeDayId, mode]);
 
   useEffect(() => {
@@ -87,6 +130,90 @@ export function App() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [selectedPlacement]);
+
+  useEffect(() => {
+    if (!transitionEditing) {
+      return;
+    }
+
+    const sourcePlacement = placementById.get(transitionEditing.sourcePlacementId);
+    const targetPlacement = placementById.get(transitionEditing.targetPlacementId);
+
+    if (!sourcePlacement || !targetPlacement) {
+      setTransitionEditing(null);
+      return;
+    }
+  }, [placementById, transitionEditing]);
+
+  useEffect(() => {
+    const previousDayId = previousActiveDayIdRef.current;
+    previousActiveDayIdRef.current = activeDayId;
+
+    if (mode !== "view" || !activeDayId || !previousDayId || previousDayId === activeDayId) {
+      setAnimatedPlacementPositions({});
+      return;
+    }
+
+    const direction = getAdjacentDayDirection(days, previousDayId, activeDayId);
+
+    if (direction === 0) {
+      setAnimatedPlacementPositions({});
+      return;
+    }
+
+    const relevantTransitions = transitions.filter((transition) => {
+      const sourcePlacement = placementById.get(transition.sourcePlacementId);
+      const targetPlacement = placementById.get(transition.targetPlacementId);
+
+      if (!sourcePlacement || !targetPlacement) {
+        return false;
+      }
+
+      if (direction > 0) {
+        return sourcePlacement.dayId === previousDayId && targetPlacement.dayId === activeDayId;
+      }
+
+      return sourcePlacement.dayId === activeDayId && targetPlacement.dayId === previousDayId;
+    });
+
+    if (!relevantTransitions.length) {
+      setAnimatedPlacementPositions({});
+      return;
+    }
+
+    let animationFrame = 0;
+    const startTime = performance.now();
+
+    const runFrame = (now: number) => {
+      const progress = Math.min(1, (now - startTime) / TRANSITION_ANIMATION_MS);
+      const nextPositions: Record<number, { x: number; y: number }> = {};
+
+      for (const transition of relevantTransitions) {
+        const placementId = direction > 0 ? transition.targetPlacementId : transition.sourcePlacementId;
+        const pointsPct = direction > 0 ? transition.pointsPct : reversePointsPct(transition.pointsPct);
+        const point = getPointAlongPolyline(pointsPct, progress);
+
+        if (point) {
+          nextPositions[placementId] = point;
+        }
+      }
+
+      setAnimatedPlacementPositions(nextPositions);
+
+      if (progress < 1) {
+        animationFrame = window.requestAnimationFrame(runFrame);
+        return;
+      }
+
+      setAnimatedPlacementPositions({});
+    };
+
+    animationFrame = window.requestAnimationFrame(runFrame);
+
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+    };
+  }, [activeDayId, days, mode, placementById, transitions]);
 
   async function handleCreateDay(label: string, rutaImagenFondo: string | null) {
     setIsSavingDay(true);
@@ -275,6 +402,231 @@ export function App() {
       setError(null);
     } catch (cause: unknown) {
       const message = cause instanceof Error ? cause.message : "No se pudo guardar el contenido del icono.";
+      setError(message);
+    }
+  }
+
+  function handleSelectDay(nextDayId: number) {
+    if (nextDayId === activeDayId) {
+      return;
+    }
+
+    if (!isViewMode || isDayTransitionRunning || !isCloudTransitionEnabled) {
+      if (!isDayTransitionRunning) {
+        setActiveDayId(nextDayId);
+      }
+      return;
+    }
+
+    const overlay = cloudTransitionRef.current;
+    const scene = mapSceneRef.current;
+    const clouds = cloudRefs.current.filter(Boolean) as HTMLDivElement[];
+
+    if (!overlay || !scene || clouds.length === 0) {
+      setActiveDayId(nextDayId);
+      return;
+    }
+
+    setIsDayTransitionRunning(true);
+
+    gsap.killTweensOf([overlay, scene, ...clouds]);
+    gsap.set(overlay, { autoAlpha: 0 });
+    gsap.set(scene, { scale: 1, filter: "blur(0px)", transformOrigin: "50% 50%" });
+    gsap.set(clouds, {
+      autoAlpha: 0,
+      scale: 0.38,
+      x: (_index: number) => gsap.utils.random(-220, 220),
+      y: (_index: number) => gsap.utils.random(-130, 130),
+      rotate: (_index: number) => gsap.utils.random(-14, 14),
+      filter: "blur(18px)"
+    });
+
+    const timeline = gsap.timeline({
+      onComplete: () => {
+        gsap.set(overlay, { autoAlpha: 0 });
+        gsap.set(scene, { clearProps: "transform,filter" });
+        gsap.set(clouds, { clearProps: "transform,filter,opacity,visibility" });
+        setIsDayTransitionRunning(false);
+      }
+    });
+
+    timeline
+      .to(overlay, { autoAlpha: 1, duration: 0.22, ease: "power2.out" })
+      .to(scene, { scale: 1.055, filter: "blur(1.4px)", duration: 0.92, ease: "power2.inOut" }, 0)
+      .to(
+        clouds,
+        {
+          autoAlpha: 0.96,
+          scale: 1.18,
+          x: 0,
+          y: 0,
+          rotate: 0,
+          filter: "blur(8px)",
+          duration: 0.44,
+          ease: "power3.out",
+          stagger: (index: number) => CLOUD_TRANSITION_LAYOUT[index]?.delay ?? index * 0.03
+        },
+        0
+      )
+      .add(() => setActiveDayId(nextDayId), 0.42)
+      .to(
+        clouds,
+        {
+          autoAlpha: 0,
+          scale: 1.64,
+          filter: "blur(22px)",
+          duration: 0.56,
+          ease: "power2.in",
+          stagger: { each: 0.026, from: "center" }
+        },
+        0.72
+      )
+      .to(overlay, { autoAlpha: 0, duration: 0.38, ease: "power2.inOut" }, 0.9)
+      .to(scene, { scale: 1, filter: "blur(0px)", duration: 0.4, ease: "power2.out" }, 0.9);
+  }
+
+  function handleStartTransitionEdit(sourcePlacement: MapIconPlacement) {
+    const nextDay = getNextDay(days, sourcePlacement.dayId);
+
+    if (!nextDay) {
+      setError("Ese icono no tiene un dia siguiente para crear transicion.");
+      return;
+    }
+
+    const targetPlacement =
+      (data?.mapPlacementsByDay[nextDay.id] ?? []).find(
+        (placement) => placement.libraryIconId === sourcePlacement.libraryIconId
+      ) ?? null;
+
+    if (!targetPlacement) {
+      setError("No existe el mismo icono en el dia siguiente para crear la transicion.");
+      return;
+    }
+
+    const existingTransition =
+      transitions.find(
+        (transition) =>
+          transition.sourcePlacementId === sourcePlacement.id && transition.targetPlacementId === targetPlacement.id
+      ) ?? null;
+
+    setTransitionEditing({
+      transitionId: existingTransition?.id ?? null,
+      sourcePlacementId: sourcePlacement.id,
+      targetPlacementId: targetPlacement.id,
+      waypointPointsPct: stripTransitionEndpoints(existingTransition?.pointsPct ?? [])
+    });
+    setIsDrawingPanelOpen(false);
+    setIsDrawingEnabled(false);
+    setError(null);
+  }
+
+  function handleAddTransitionWaypoint(posXPct: number, posYPct: number) {
+    setTransitionEditing((current) => {
+      if (!current) {
+        return current;
+      }
+
+      return {
+        ...current,
+        waypointPointsPct: [...current.waypointPointsPct, posXPct, posYPct]
+      };
+    });
+  }
+
+  function handleMoveTransitionWaypoint(index: number, posXPct: number, posYPct: number) {
+    setTransitionEditing((current) => {
+      if (!current) {
+        return current;
+      }
+
+      const nextWaypoints = [...current.waypointPointsPct];
+      nextWaypoints[index * 2] = posXPct;
+      nextWaypoints[index * 2 + 1] = posYPct;
+
+      return {
+        ...current,
+        waypointPointsPct: nextWaypoints
+      };
+    });
+  }
+
+  function handleUndoTransitionWaypoint() {
+    setTransitionEditing((current) => {
+      if (!current || current.waypointPointsPct.length < 2) {
+        return current;
+      }
+
+      return {
+        ...current,
+        waypointPointsPct: current.waypointPointsPct.slice(0, -2)
+      };
+    });
+  }
+
+  function handleClearTransitionWaypoint() {
+    setTransitionEditing((current) => {
+      if (!current) {
+        return current;
+      }
+
+      return {
+        ...current,
+        waypointPointsPct: []
+      };
+    });
+  }
+
+  async function handleSaveTransition() {
+    if (!transitionEditing) {
+      return;
+    }
+
+    const sourcePlacement = placementById.get(transitionEditing.sourcePlacementId);
+    const targetPlacement = placementById.get(transitionEditing.targetPlacementId);
+
+    if (!sourcePlacement || !targetPlacement) {
+      setError("No se pudo resolver el origen o destino de la transicion.");
+      return;
+    }
+
+    const fullPointsPct = [
+      sourcePlacement.posXPct,
+      sourcePlacement.posYPct,
+      ...transitionEditing.waypointPointsPct,
+      targetPlacement.posXPct,
+      targetPlacement.posYPct
+    ];
+
+    try {
+      const nextData = await window.mapaMalvinas.upsertMapIconTransition({
+        sourcePlacementId: sourcePlacement.id,
+        targetPlacementId: targetPlacement.id,
+        pointsPct: fullPointsPct
+      });
+      setData(nextData);
+      setTransitionEditing(null);
+      setError(null);
+    } catch (cause: unknown) {
+      const message = cause instanceof Error ? cause.message : "No se pudo guardar la transicion.";
+      setError(message);
+    }
+  }
+
+  async function handleDeleteTransition() {
+    if (!transitionEditing?.transitionId) {
+      setTransitionEditing(null);
+      return;
+    }
+
+    try {
+      const nextData = await window.mapaMalvinas.deleteMapIconTransition({
+        transitionId: transitionEditing.transitionId
+      });
+      setData(nextData);
+      setTransitionEditing(null);
+      setError(null);
+    } catch (cause: unknown) {
+      const message = cause instanceof Error ? cause.message : "No se pudo borrar la transicion.";
       setError(message);
     }
   }
@@ -485,6 +837,15 @@ export function App() {
       </button>
 
       <div className="mode-badge">{isEditMode ? "Modo edicion" : "Modo visualizacion"}</div>
+      {isViewMode ? (
+        <button
+          className={isCloudTransitionEnabled ? "transition-toggle-button active" : "transition-toggle-button"}
+          onClick={() => setIsCloudTransitionEnabled((current) => !current)}
+          type="button"
+        >
+          {isCloudTransitionEnabled ? "Transicion nubes: si" : "Transicion nubes: no"}
+        </button>
+      ) : null}
 
       <TopTimeline
         activeDayId={activeDayId}
@@ -493,26 +854,55 @@ export function App() {
         isSavingDay={isSavingDay}
         onAddDay={handleAddDay}
         onDeleteDay={handleDeleteDay}
-        onSelectDay={setActiveDayId}
+        onSelectDay={handleSelectDay}
         onUpdateDay={handleUpdateDay}
       />
 
-      <MapCanvas
-        activeDay={activeDay}
-        drawingLines={activeDrawingLines}
-        drawingLineStyle={drawingLineStyle}
-        drawingTool={drawingTool}
-        dragLibraryIcon={isEditMode ? dragLibraryIcon : null}
-        isDrawingEnabled={isDrawingEnabled}
-        isEditable={isEditMode}
-        onActivatePlacement={isViewMode ? handleOpenPlacementViewer : undefined}
-        onCreateDrawingLine={handleCreateDrawingLine}
-        onCreatePlacement={handleCreatePlacement}
-        onDeletePlacement={handleDeletePlacement}
-        onEditPlacement={handleOpenPlacementEditor}
-        onMovePlacement={handleMovePlacement}
-        placements={activeMapPlacements}
-      />
+      <div ref={mapSceneRef} className="map-scene-wrap">
+        <MapCanvas
+          activeDay={activeDay}
+          animatedPlacementPositions={animatedPlacementPositions}
+          drawingLines={activeDrawingLines}
+          drawingLineStyle={drawingLineStyle}
+          drawingTool={drawingTool}
+          dragLibraryIcon={isEditMode ? dragLibraryIcon : null}
+          isDrawingEnabled={isDrawingEnabled}
+          isEditable={isEditMode}
+          isTransitionEditing={Boolean(transitionEditing)}
+          onActivatePlacement={isReadOnlyMode ? handleOpenPlacementViewer : undefined}
+          onAddTransitionWaypoint={handleAddTransitionWaypoint}
+          onCreateDrawingLine={handleCreateDrawingLine}
+          onCreatePlacement={handleCreatePlacement}
+          onDeletePlacement={handleDeletePlacement}
+          onEditPlacement={handleOpenPlacementEditor}
+          onEditTransition={handleStartTransitionEdit}
+          onMovePlacement={handleMovePlacement}
+          onMoveTransitionWaypoint={handleMoveTransitionWaypoint}
+          placements={activeMapPlacements}
+          transitionEditorSourcePlacement={transitionSourcePlacement}
+          transitionEditorTargetPlacement={transitionTargetPlacement}
+          transitionWaypointPointsPct={transitionEditing?.waypointPointsPct ?? []}
+        />
+      </div>
+
+      <div ref={cloudTransitionRef} aria-hidden="true" className="day-cloud-transition">
+        <div className="day-cloud-transition-veil" />
+        {CLOUD_TRANSITION_LAYOUT.map((cloud, index) => (
+          <div
+            key={`cloud-${index}`}
+            ref={(element) => setCloudRef(index, element)}
+            className="day-cloud-puff"
+            style={
+              {
+                left: cloud.left,
+                top: cloud.top,
+                width: `${cloud.width}px`,
+                height: `${cloud.height}px`
+              } as CSSProperties
+            }
+          />
+        ))}
+      </div>
 
       {isEditMode && editingPlacement ? (
         <section className="content-editor-modal">
@@ -700,6 +1090,44 @@ export function App() {
         </aside>
       ) : null}
 
+      {isEditMode && transitionEditing && transitionSourcePlacement && transitionTargetPlacement ? (
+        <aside className="transition-panel">
+          <div className="transition-panel-header">
+            <strong>Transicion al siguiente dia</strong>
+            <button className="transition-close" onClick={() => setTransitionEditing(null)} type="button">
+              x
+            </button>
+          </div>
+
+          <div className="transition-summary">
+            <span>{days.find((day) => day.id === transitionSourcePlacement.dayId)?.etiquetaFecha ?? "Dia actual"}</span>
+            <span className="transition-arrow">→</span>
+            <span>{days.find((day) => day.id === transitionTargetPlacement.dayId)?.etiquetaFecha ?? "Dia siguiente"}</span>
+          </div>
+
+          <div className="transition-hint">
+            Toca el mapa para agregar puntos intermedios al recorrido. Los extremos se toman automaticamente desde la posicion del icono en ambos dias.
+          </div>
+
+          <div className="transition-points-count">
+            Puntos intermedios: {transitionEditing.waypointPointsPct.length / 2}
+          </div>
+
+          <button className="transition-action-button" onClick={handleUndoTransitionWaypoint} type="button">
+            Deshacer ultimo punto
+          </button>
+          <button className="transition-action-button secondary" onClick={handleClearTransitionWaypoint} type="button">
+            Limpiar puntos
+          </button>
+          <button className="transition-action-button save" onClick={() => void handleSaveTransition()} type="button">
+            Guardar transicion
+          </button>
+          <button className="transition-action-button secondary" onClick={() => void handleDeleteTransition()} type="button">
+            {transitionEditing.transitionId ? "Borrar transicion" : "Cancelar"}
+          </button>
+        </aside>
+      ) : null}
+
       {isEditMode ? (
         <>
           <button
@@ -723,9 +1151,9 @@ export function App() {
         </>
       ) : null}
 
-      {isViewMode && !activeDay ? <div className="view-empty">No hay dias creados para visualizar.</div> : null}
+      {isReadOnlyMode && !activeDay ? <div className="view-empty">No hay dias creados para visualizar.</div> : null}
 
-      {isViewMode && selectedPlacement ? (
+      {isReadOnlyMode && selectedPlacement ? (
         <section
           className="content-viewer-modal"
           onClick={() => setSelectedPlacement(null)}
@@ -811,6 +1239,103 @@ const VIDEO_EXTENSIONS = new Set([
   ".3gp",
   ".ogv"
 ]);
+
+function getNextDay(days: BootstrapData["days"], dayId: number) {
+  const currentIndex = days.findIndex((day) => day.id === dayId);
+
+  if (currentIndex === -1 || currentIndex >= days.length - 1) {
+    return null;
+  }
+
+  return days[currentIndex + 1] ?? null;
+}
+
+function stripTransitionEndpoints(pointsPct: number[]) {
+  if (pointsPct.length <= 4) {
+    return [];
+  }
+
+  return pointsPct.slice(2, -2);
+}
+
+function reversePointsPct(pointsPct: number[]) {
+  const reversed: number[] = [];
+
+  for (let index = pointsPct.length - 2; index >= 0; index -= 2) {
+    reversed.push(pointsPct[index], pointsPct[index + 1]);
+  }
+
+  return reversed;
+}
+
+function getAdjacentDayDirection(days: BootstrapData["days"], fromDayId: number, toDayId: number) {
+  const fromIndex = days.findIndex((day) => day.id === fromDayId);
+  const toIndex = days.findIndex((day) => day.id === toDayId);
+
+  if (fromIndex === -1 || toIndex === -1) {
+    return 0;
+  }
+
+  if (toIndex === fromIndex + 1) {
+    return 1;
+  }
+
+  if (toIndex === fromIndex - 1) {
+    return -1;
+  }
+
+  return 0;
+}
+
+function getPointAlongPolyline(pointsPct: number[], progress: number) {
+  if (pointsPct.length < 4) {
+    return null;
+  }
+
+  const segments: Array<{ startX: number; startY: number; endX: number; endY: number; length: number }> = [];
+  let totalLength = 0;
+
+  for (let index = 0; index < pointsPct.length - 2; index += 2) {
+    const startX = pointsPct[index];
+    const startY = pointsPct[index + 1];
+    const endX = pointsPct[index + 2];
+    const endY = pointsPct[index + 3];
+    const length = Math.hypot(endX - startX, endY - startY);
+
+    segments.push({ startX, startY, endX, endY, length });
+    totalLength += length;
+  }
+
+  if (!segments.length || totalLength === 0) {
+    return {
+      x: pointsPct[0],
+      y: pointsPct[1]
+    };
+  }
+
+  const targetLength = totalLength * progress;
+  let traversed = 0;
+
+  for (const segment of segments) {
+    const nextTraversed = traversed + segment.length;
+
+    if (targetLength <= nextTraversed) {
+      const localProgress = segment.length === 0 ? 0 : (targetLength - traversed) / segment.length;
+
+      return {
+        x: segment.startX + (segment.endX - segment.startX) * localProgress,
+        y: segment.startY + (segment.endY - segment.startY) * localProgress
+      };
+    }
+
+    traversed = nextTraversed;
+  }
+
+  return {
+    x: pointsPct[pointsPct.length - 2],
+    y: pointsPct[pointsPct.length - 1]
+  };
+}
 
 function getFileExtension(filePath: string) {
   const normalizedPath = filePath.toLowerCase();
