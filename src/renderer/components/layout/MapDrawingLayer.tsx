@@ -13,6 +13,8 @@ type MapDrawingLayerProps = {
   lineStyle: MapDrawingLineStyle;
   drawingTool: MapDrawingTool;
   onCreateLine: (pointsPct: number[], style: MapDrawingLineStyle) => Promise<void>;
+  linesOpacity?: number;
+  linesRevealProgress?: number;
 };
 
 function getDash(style: MapDrawingLineStyle) {
@@ -35,6 +37,52 @@ function toCanvasPoints(pointsPct: number[], width: number, height: number) {
   }
 
   return result;
+}
+
+function getPartialCanvasPoints(points: number[], progress: number) {
+  if (progress >= 1 || points.length < 4) {
+    return points;
+  }
+
+  const segments: Array<{ startX: number; startY: number; endX: number; endY: number; length: number }> = [];
+  let totalLength = 0;
+
+  for (let index = 0; index < points.length - 2; index += 2) {
+    const startX = points[index];
+    const startY = points[index + 1];
+    const endX = points[index + 2];
+    const endY = points[index + 3];
+    const length = Math.hypot(endX - startX, endY - startY);
+    segments.push({ startX, startY, endX, endY, length });
+    totalLength += length;
+  }
+
+  if (!segments.length || totalLength === 0) {
+    return points.slice(0, 4);
+  }
+
+  const targetLength = totalLength * Math.min(Math.max(progress, 0), 1);
+  const partialPoints = [segments[0].startX, segments[0].startY];
+  let traversedLength = 0;
+
+  for (const segment of segments) {
+    const nextTraversedLength = traversedLength + segment.length;
+
+    if (targetLength >= nextTraversedLength) {
+      partialPoints.push(segment.endX, segment.endY);
+      traversedLength = nextTraversedLength;
+      continue;
+    }
+
+    const localProgress = segment.length === 0 ? 0 : (targetLength - traversedLength) / segment.length;
+    partialPoints.push(
+      segment.startX + (segment.endX - segment.startX) * localProgress,
+      segment.startY + (segment.endY - segment.startY) * localProgress
+    );
+    break;
+  }
+
+  return partialPoints.length >= 4 ? partialPoints : points.slice(0, 4);
 }
 
 function clampPct(value: number) {
@@ -77,7 +125,9 @@ export function MapDrawingLayer({
   isDrawingEnabled,
   lineStyle,
   drawingTool,
-  onCreateLine
+  onCreateLine,
+  linesOpacity = 1,
+  linesRevealProgress = 1
 }: MapDrawingLayerProps) {
   const [currentPointsPct, setCurrentPointsPct] = useState<number[]>([]);
   const [isPointerDown, setIsPointerDown] = useState(false);
@@ -292,7 +342,8 @@ export function MapDrawingLayer({
             lineCap="round"
             lineJoin="round"
             listening={false}
-            points={toCanvasPoints(line.pointsPct, width, height)}
+            opacity={linesOpacity}
+            points={getPartialCanvasPoints(toCanvasPoints(line.pointsPct, width, height), linesRevealProgress)}
             stroke="#f6d98d"
             strokeWidth={6}
           />

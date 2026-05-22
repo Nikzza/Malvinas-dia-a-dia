@@ -23,13 +23,11 @@ export type BootstrapData = {
 
 export type CreateDayPayload = {
   etiquetaFecha: string;
-  rutaImagenFondo: string | null;
 };
 
 export type UpdateDayPayload = {
   id: number;
   etiquetaFecha: string;
-  rutaImagenFondo: string | null;
 };
 
 export type CreateDayIconPayload = {

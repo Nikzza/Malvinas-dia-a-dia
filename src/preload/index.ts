@@ -21,7 +21,6 @@ const api = {
   createDay: (payload: CreateDayPayload) => ipcRenderer.invoke("days:create", payload),
   deleteDay: (dayId: number) => ipcRenderer.invoke("days:delete", dayId) as Promise<BootstrapData>,
   updateDay: (payload: UpdateDayPayload) => ipcRenderer.invoke("days:update", payload) as Promise<BootstrapData>,
-  selectDayBackground: () => ipcRenderer.invoke("days:select-background") as Promise<string | null>,
   selectIconPng: () => ipcRenderer.invoke("icons:select-png") as Promise<string | null>,
   createDayIcon: (payload: CreateDayIconPayload) => ipcRenderer.invoke("icons:create", payload) as Promise<BootstrapData>,
   deleteDayIcon: (payload: DeleteDayIconPayload) => ipcRenderer.invoke("icons:delete", payload) as Promise<BootstrapData>,

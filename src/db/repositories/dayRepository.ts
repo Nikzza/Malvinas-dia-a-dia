@@ -32,7 +32,7 @@ export const dayRepository = {
       updatedAt: row.updated_at
     }));
   },
-  create: (etiquetaFecha: string, rutaImagenFondo: string | null): Day => {
+  create: (etiquetaFecha: string): Day => {
     const db = getDatabase();
     const maxOrderRow = db.prepare("SELECT COALESCE(MAX(orden), 0) AS maxOrden FROM dias").get() as {
       maxOrden: number;
@@ -45,7 +45,7 @@ export const dayRepository = {
           VALUES (?, ?, ?)
         `
       )
-      .run(etiquetaFecha.trim(), rutaImagenFondo, maxOrderRow.maxOrden + 1);
+      .run(etiquetaFecha.trim(), null, maxOrderRow.maxOrden + 1);
 
     const created = db
       .prepare(
@@ -85,14 +85,14 @@ export const dayRepository = {
     db.prepare("DELETE FROM eventos WHERE id_dia = ?").run(id);
     db.prepare("DELETE FROM dias WHERE id = ?").run(id);
   },
-  update: (id: number, etiquetaFecha: string, rutaImagenFondo: string | null): void => {
+  update: (id: number, etiquetaFecha: string): void => {
     const db = getDatabase();
     db.prepare(
       `
         UPDATE dias
-        SET etiqueta_fecha = ?, ruta_imagen_fondo = ?, updated_at = CURRENT_TIMESTAMP
+        SET etiqueta_fecha = ?, ruta_imagen_fondo = NULL, updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
       `
-    ).run(etiquetaFecha.trim(), rutaImagenFondo, id);
+    ).run(etiquetaFecha.trim(), id);
   }
 };

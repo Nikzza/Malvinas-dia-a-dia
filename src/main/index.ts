@@ -4,7 +4,7 @@ import path from "node:path";
 import { createMainWindow } from "./window";
 import { initDatabase, getDatabaseInfo } from "../db/connection";
 import { dayRepository } from "../db/repositories/dayRepository";
-import type { Day, DayBackgroundMediaType } from "../shared/types/day";
+import type { Day } from "../shared/types/day";
 import type { MapDrawingLine } from "../shared/types/mapDrawingLine";
 import type { DayIcon } from "../shared/types/dayIcon";
 import type { MapIconPlacement } from "../shared/types/mapIconPlacement";
@@ -137,30 +137,12 @@ function toImageDataUrl(filePath: string | null) {
   }
 }
 
-function getDayBackgroundMediaType(filePath: string | null): DayBackgroundMediaType | null {
-  if (!filePath) {
-    return null;
-  }
-
-  const extension = getNormalizedExtension(filePath);
-
-  if (VIDEO_EXTENSIONS.includes(extension)) {
-    return "video";
-  }
-
-  if (IMAGE_EXTENSIONS.includes(extension)) {
-    return "imagen";
-  }
-
-  return null;
-}
-
 function enrichDays(days: Day[]) {
   return days.map((day) => ({
     ...day,
-    imagenFondoDataUrl: toImageDataUrl(day.rutaImagenFondo),
-    fondoMediaDataUrl: toImageDataUrl(day.rutaImagenFondo),
-    tipoFondoMedia: getDayBackgroundMediaType(day.rutaImagenFondo)
+    imagenFondoDataUrl: null,
+    fondoMediaDataUrl: null,
+    tipoFondoMedia: null
   }));
 }
 
@@ -239,7 +221,7 @@ function registerIpcHandlers() {
       throw new Error("El nombre del dia no puede estar vacio.");
     }
 
-    dayRepository.create(etiquetaFecha, payload.rutaImagenFondo);
+    dayRepository.create(etiquetaFecha);
     return getBootstrapData();
   });
   ipcMain.handle("days:delete", async (_event, dayId: number) => {
@@ -253,34 +235,8 @@ function registerIpcHandlers() {
       throw new Error("El nombre del dia no puede estar vacio.");
     }
 
-    dayRepository.update(payload.id, etiquetaFecha, payload.rutaImagenFondo);
+    dayRepository.update(payload.id, etiquetaFecha);
     return getBootstrapData();
-  });
-  ipcMain.handle("days:select-background", async () => {
-    const result = await dialog.showOpenDialog({
-      title: "Seleccionar fondo del dia",
-      properties: ["openFile"],
-      filters: [
-        {
-          name: "Fondos compatibles",
-          extensions: [...IMAGE_EXTENSIONS, "mp4", "webm", "mov"]
-        },
-        {
-          name: "Imagenes y GIF",
-          extensions: IMAGE_EXTENSIONS
-        },
-        {
-          name: "Videos",
-          extensions: ["mp4", "webm", "mov"]
-        }
-      ]
-    });
-
-    if (result.canceled) {
-      return null;
-    }
-
-    return result.filePaths[0] ?? null;
   });
   ipcMain.handle("icons:select-png", async () => {
     const result = await dialog.showOpenDialog({

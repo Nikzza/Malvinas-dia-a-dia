@@ -177,83 +177,10 @@ body {
   font-size: 0.95rem;
 }
 
-.transition-toggle-button {
-  position: absolute;
-  top: 18px;
-  right: 346px;
-  z-index: 5;
-  padding: 10px 16px;
-  border: 1px solid var(--color-border);
-  border-radius: 999px;
-  background: rgba(8, 17, 29, 0.72);
-  backdrop-filter: blur(12px);
-  color: var(--color-text);
-  font: inherit;
-  font-size: 0.95rem;
-}
-
-.transition-toggle-button.active {
-  background: rgba(246, 217, 141, 0.92);
-  color: #111;
-  border-color: rgba(246, 217, 141, 0.95);
-}
-
 .map-scene-wrap {
   position: absolute;
   inset: 0;
   transform-origin: 50% 50%;
-}
-
-.day-cloud-transition {
-  position: absolute;
-  inset: 0;
-  z-index: 7;
-  opacity: 0;
-  visibility: hidden;
-  pointer-events: none;
-  overflow: hidden;
-}
-
-.day-cloud-transition-veil {
-  position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(circle at 50% 45%, rgba(244, 248, 250, 0.18), transparent 26%),
-    linear-gradient(180deg, rgba(215, 224, 228, 0.18), rgba(192, 202, 210, 0.26)),
-    radial-gradient(circle at 50% 50%, rgba(120, 136, 148, 0.18), transparent 62%);
-  backdrop-filter: blur(6px);
-}
-
-.day-cloud-puff {
-  position: absolute;
-  border-radius: 999px;
-  background:
-    radial-gradient(circle at 38% 38%, rgba(255, 255, 255, 0.98), rgba(245, 249, 252, 0.92) 34%, rgba(214, 223, 228, 0.68) 64%, rgba(214, 223, 228, 0) 100%);
-  box-shadow:
-    0 0 34px rgba(255, 255, 255, 0.32),
-    0 20px 52px rgba(201, 214, 224, 0.16);
-}
-
-.day-cloud-puff::before,
-.day-cloud-puff::after {
-  content: "";
-  position: absolute;
-  border-radius: 999px;
-  background: inherit;
-}
-
-.day-cloud-puff::before {
-  width: 52%;
-  height: 58%;
-  left: 8%;
-  top: 18%;
-}
-
-.day-cloud-puff::after {
-  width: 58%;
-  height: 62%;
-  right: 8%;
-  top: 8%;
 }
 
 .timeline-shell {
@@ -506,6 +433,18 @@ body {
   cursor: grabbing;
 }
 
+.maplibre-background {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: auto;
+  user-select: none;
+}
+
+.maplibre-background .maplibregl-canvas {
+  outline: none;
+}
+
 .map-image {
   position: absolute;
   max-width: none;
@@ -530,7 +469,13 @@ body {
 
 .placed-icons-layer {
   position: absolute;
+  inset: 0;
   pointer-events: none;
+}
+
+.day-layer-current,
+.day-layer-previous {
+  will-change: opacity;
 }
 
 .transition-overlay {
@@ -580,7 +525,9 @@ body {
 
 .drawing-layer-surface {
   position: absolute;
+  inset: 0;
   z-index: 1;
+  pointer-events: none;
 }
 
 .drawing-layer-wrap {
@@ -1235,12 +1182,6 @@ body {
     left: 12px;
     right: auto;
     bottom: 12px;
-  }
-
-  .transition-toggle-button {
-    top: auto;
-    right: 12px;
-    bottom: 64px;
   }
 
   .drawing-toggle {

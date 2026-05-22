@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type {
-  CSSProperties,
   DragEvent as ReactDragEvent,
   MouseEvent as ReactMouseEvent,
-  PointerEvent as ReactPointerEvent,
-  WheelEvent as ReactWheelEvent
+  PointerEvent as ReactPointerEvent
 } from "react";
-import type { Day, DayBackgroundMediaType } from "../../../shared/types/day";
+import maplibregl, { type StyleSpecification } from "maplibre-gl";
+import "maplibre-gl/dist/maplibre-gl.css";
+import type { Day } from "../../../shared/types/day";
 import type { MapDrawingLine, MapDrawingLineStyle } from "../../../shared/types/mapDrawingLine";
 import type { DayIcon } from "../../../shared/types/dayIcon";
 import type { MapIconPlacement } from "../../../shared/types/mapIconPlacement";
@@ -33,34 +33,95 @@ type MapCanvasProps = {
   onEditPlacement: (placement: MapIconPlacement) => void;
   onEditTransition: (placement: MapIconPlacement) => void;
   placements: MapIconPlacement[];
+  previousDrawingLines: MapDrawingLine[];
+  previousPlacements: MapIconPlacement[];
+  transitionProgress: number;
   transitionEditorSourcePlacement: MapIconPlacement | null;
   transitionEditorTargetPlacement: MapIconPlacement | null;
   transitionWaypointPointsPct: number[];
 };
 
-type Point = {
-  x: number;
-  y: number;
+type ScreenPoint = {
+  xPct: number;
+  yPct: number;
 };
 
-const MAX_ZOOM = 12;
+const MAX_MERCATOR_LATITUDE = 85.05112878;
+const MALVINAS_CENTER: [number, number] = [-59.5236, -51.7963];
+const MAPLIBRE_STYLE: StyleSpecification = {
+  version: 8,
+  sources: {
+    "raster-tiles": {
+      type: "raster",
+      tiles: [
+        "https://mt0.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
+        "https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
+        "https://mt2.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
+        "https://mt3.google.com/vt/lyrs=s&x={x}&y={y}&z={z}"
+      ],
+      tileSize: 256
+    }
+  },
+  layers: [{ id: "raster-layer", type: "raster", source: "raster-tiles" }]
+};
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
 }
 
-function clampPan(pan: Point, renderedWidth: number, renderedHeight: number, viewportWidth: number, viewportHeight: number) {
-  const maxPanX = Math.max(0, (renderedWidth - viewportWidth) / 2);
-  const maxPanY = Math.max(0, (renderedHeight - viewportHeight) / 2);
+function normalizeLongitude(lng: number) {
+  return ((((lng + 180) % 360) + 360) % 360) - 180;
+}
+
+function lngLatToWorldPct(lng: number, lat: number) {
+  const normalizedLng = normalizeLongitude(lng);
+  const clampedLat = clamp(lat, -MAX_MERCATOR_LATITUDE, MAX_MERCATOR_LATITUDE);
+  const latRad = (clampedLat * Math.PI) / 180;
+  const x = ((normalizedLng + 180) / 360) * 100;
+  const y = ((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * 100;
 
   return {
-    x: clamp(pan.x, -maxPanX, maxPanX),
-    y: clamp(pan.y, -maxPanY, maxPanY)
+    x: clamp(x, 0, 100),
+    y: clamp(y, 0, 100)
   };
 }
 
-function clampPct(value: number) {
-  return clamp(value, 0, 100);
+function worldPctToLngLat(xPct: number, yPct: number): [number, number] {
+  const lng = (clamp(xPct, 0, 100) / 100) * 360 - 180;
+  const mercatorY = clamp(yPct, 0, 100) / 100;
+  const latRad = Math.atan(Math.sinh(Math.PI * (1 - 2 * mercatorY)));
+  return [lng, (latRad * 180) / Math.PI];
+}
+
+function pairsToScreenPct(pointsPct: number[], map: maplibregl.Map | null, width: number, height: number) {
+  if (!map || !width || !height) {
+    return pointsPct;
+  }
+
+  const projected: number[] = [];
+
+  for (let index = 0; index < pointsPct.length; index += 2) {
+    const point = map.project(worldPctToLngLat(pointsPct[index], pointsPct[index + 1]));
+    projected.push((point.x / width) * 100, (point.y / height) * 100);
+  }
+
+  return projected;
+}
+
+function pairsToWorldPct(pointsPct: number[], map: maplibregl.Map | null, width: number, height: number) {
+  if (!map || !width || !height) {
+    return pointsPct;
+  }
+
+  const projected: number[] = [];
+
+  for (let index = 0; index < pointsPct.length; index += 2) {
+    const lngLat = map.unproject([(pointsPct[index] / 100) * width, (pointsPct[index + 1] / 100) * height]);
+    const worldPct = lngLatToWorldPct(lngLat.lng, lngLat.lat);
+    projected.push(worldPct.x, worldPct.y);
+  }
+
+  return projected;
 }
 
 function toSvgPolylinePoints(pointsPct: number[], width: number, height: number) {
@@ -92,34 +153,21 @@ export function MapCanvas({
   onEditTransition,
   onMovePlacement,
   onMoveTransitionWaypoint,
-  placements
-  ,
+  placements,
+  previousDrawingLines,
+  previousPlacements,
+  transitionProgress,
   transitionEditorSourcePlacement,
   transitionEditorTargetPlacement,
   transitionWaypointPointsPct
 }: MapCanvasProps) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
-  const placementDragStartRef = useRef<Point | null>(null);
-  const placementOriginRef = useRef<{ posXPct: number; posYPct: number } | null>(null);
-  const mapPanStartRef = useRef<Point | null>(null);
-  const panOriginRef = useRef<Point>({ x: 0, y: 0 });
+  const mapContainerRef = useRef<HTMLDivElement | null>(null);
+  const mapInstanceRef = useRef<maplibregl.Map | null>(null);
   const transitionWaypointDragIndexRef = useRef<number | null>(null);
 
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
-  const [mediaSize, setMediaSize] = useState({ width: 0, height: 0 });
-  const [displayMediaSource, setDisplayMediaSource] = useState<string | null>(null);
-  const [zoom, setZoom] = useState(1);
-  const [pan, setPan] = useState<Point>({ x: 0, y: 0 });
-  const [mediaLoadFailed, setMediaLoadFailed] = useState(false);
-
-  const backgroundSource = useMemo(
-    () => activeDay?.fondoMediaDataUrl ?? activeDay?.imagenFondoDataUrl ?? null,
-    [activeDay?.fondoMediaDataUrl, activeDay?.imagenFondoDataUrl]
-  );
-  const backgroundMediaType = useMemo<DayBackgroundMediaType | null>(
-    () => activeDay?.tipoFondoMedia ?? (backgroundSource ? "imagen" : null),
-    [activeDay?.tipoFondoMedia, backgroundSource]
-  );
+  const [mapViewVersion, setMapViewVersion] = useState(0);
 
   useEffect(() => {
     const viewport = viewportRef.current;
@@ -146,116 +194,137 @@ export function MapCanvas({
     return () => observer.disconnect();
   }, []);
 
-  const baseScale = useMemo(() => {
-    if (!viewportSize.width || !viewportSize.height || !mediaSize.width || !mediaSize.height) {
-      return 1;
-    }
-
-    return Math.max(viewportSize.width / mediaSize.width, viewportSize.height / mediaSize.height);
-  }, [mediaSize.height, mediaSize.width, viewportSize.height, viewportSize.width]);
-
-  const containScale = useMemo(() => {
-    if (!viewportSize.width || !viewportSize.height || !mediaSize.width || !mediaSize.height) {
-      return 1;
-    }
-
-    return Math.min(viewportSize.width / mediaSize.width, viewportSize.height / mediaSize.height);
-  }, [mediaSize.height, mediaSize.width, viewportSize.height, viewportSize.width]);
-
-  const minZoom = useMemo(() => {
-    if (!baseScale || !containScale) {
-      return 1;
-    }
-
-    return Math.min(1, containScale / baseScale);
-  }, [baseScale, containScale]);
-
   useEffect(() => {
-    setZoom(minZoom);
-    setPan({ x: 0, y: 0 });
-  }, [minZoom]);
+    const container = mapContainerRef.current;
 
-  const renderedWidth = mediaSize.width * baseScale * zoom;
-  const renderedHeight = mediaSize.height * baseScale * zoom;
-  const imageLeft = (viewportSize.width - renderedWidth) / 2 + pan.x;
-  const imageTop = (viewportSize.height - renderedHeight) / 2 + pan.y;
-
-  useEffect(() => {
-    setMediaLoadFailed(false);
-    setMediaSize({ width: 0, height: 0 });
-
-    if (!backgroundSource) {
-      setDisplayMediaSource(null);
+    if (!container || mapInstanceRef.current) {
       return;
     }
 
-    if (backgroundMediaType === "video") {
-      setDisplayMediaSource(backgroundSource);
-      return;
-    }
+    const map = new maplibregl.Map({
+      container,
+      style: MAPLIBRE_STYLE,
+      center: MALVINAS_CENTER,
+      zoom: 6.25,
+      attributionControl: false,
+      dragRotate: false,
+      touchPitch: false
+    });
 
-    const preloadImage = new window.Image();
+    const syncOverlay = () => setMapViewVersion((current) => current + 1);
+    map.on("load", syncOverlay);
+    map.on("move", syncOverlay);
+    map.on("zoom", syncOverlay);
+    map.on("resize", syncOverlay);
+    mapInstanceRef.current = map;
 
-    preloadImage.onload = () => {
-      setMediaSize({
-        width: preloadImage.naturalWidth,
-        height: preloadImage.naturalHeight
-      });
-      setDisplayMediaSource(backgroundSource);
+    return () => {
+      map.off("load", syncOverlay);
+      map.off("move", syncOverlay);
+      map.off("zoom", syncOverlay);
+      map.off("resize", syncOverlay);
+      map.remove();
+      mapInstanceRef.current = null;
     };
-
-    preloadImage.onerror = () => {
-      setMediaLoadFailed(true);
-      setDisplayMediaSource(null);
-    };
-
-    preloadImage.src = backgroundSource;
-  }, [backgroundMediaType, backgroundSource]);
+  }, []);
 
   useEffect(() => {
-    if (!renderedWidth || !renderedHeight) {
-      return;
-    }
-  }, [renderedHeight, renderedWidth, viewportSize.height, viewportSize.width]);
+    const animationFrame = window.requestAnimationFrame(() => {
+      mapInstanceRef.current?.resize();
+      setMapViewVersion((current) => current + 1);
+    });
 
-  function getPctFromPointer(clientX: number, clientY: number) {
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [viewportSize.height, viewportSize.width]);
+
+  const map = mapInstanceRef.current;
+
+  function getWorldPctFromPointer(clientX: number, clientY: number) {
     const viewportRect = viewportRef.current?.getBoundingClientRect();
+    const currentMap = mapInstanceRef.current;
 
-    if (!viewportRect || !renderedWidth || !renderedHeight) {
+    if (!viewportRect || !currentMap || !viewportSize.width || !viewportSize.height) {
       return null;
     }
 
-    const relativeX = clientX - viewportRect.left - imageLeft;
-    const relativeY = clientY - viewportRect.top - imageTop;
+    const lngLat = currentMap.unproject([clientX - viewportRect.left, clientY - viewportRect.top]);
+    return lngLatToWorldPct(lngLat.lng, lngLat.lat);
+  }
 
+  function getScreenPoint(worldXPct: number, worldYPct: number): ScreenPoint | null {
+    if (!map || !viewportSize.width || !viewportSize.height) {
+      return null;
+    }
+
+    const point = map.project(worldPctToLngLat(worldXPct, worldYPct));
     return {
-      x: clampPct((relativeX / renderedWidth) * 100),
-      y: clampPct((relativeY / renderedHeight) * 100)
+      xPct: (point.x / viewportSize.width) * 100,
+      yPct: (point.y / viewportSize.height) * 100
     };
   }
 
-  const transitionPreviewPointsPct =
-    transitionEditorSourcePlacement && transitionEditorTargetPlacement
-      ? [
-          transitionEditorSourcePlacement.posXPct,
-          transitionEditorSourcePlacement.posYPct,
-          ...transitionWaypointPointsPct,
-          transitionEditorTargetPlacement.posXPct,
-          transitionEditorTargetPlacement.posYPct
-        ]
-      : [];
+  const screenDrawingLines = useMemo(
+    () =>
+      drawingLines.map((line) => ({
+        ...line,
+        pointsPct: pairsToScreenPct(line.pointsPct, map, viewportSize.width, viewportSize.height)
+      })),
+    [drawingLines, map, mapViewVersion, viewportSize.height, viewportSize.width]
+  );
+  const previousScreenDrawingLines = useMemo(
+    () =>
+      previousDrawingLines.map((line) => ({
+        ...line,
+        pointsPct: pairsToScreenPct(line.pointsPct, map, viewportSize.width, viewportSize.height)
+      })),
+    [map, mapViewVersion, previousDrawingLines, viewportSize.height, viewportSize.width]
+  );
 
-  async function handlePlacementPointerMove(event: ReactPointerEvent<HTMLButtonElement>, placement: MapIconPlacement) {
-    if (!placementDragStartRef.current || placementOriginRef.current === null) {
-      return;
+  const transitionPreviewPointsPct = useMemo(() => {
+    if (!transitionEditorSourcePlacement || !transitionEditorTargetPlacement) {
+      return [];
     }
 
-    event.preventDefault();
+    return pairsToScreenPct(
+      [
+        transitionEditorSourcePlacement.posXPct,
+        transitionEditorSourcePlacement.posYPct,
+        ...transitionWaypointPointsPct,
+        transitionEditorTargetPlacement.posXPct,
+        transitionEditorTargetPlacement.posYPct
+      ],
+      map,
+      viewportSize.width,
+      viewportSize.height
+    );
+  }, [
+    map,
+    mapViewVersion,
+    transitionEditorSourcePlacement,
+    transitionEditorTargetPlacement,
+    transitionWaypointPointsPct,
+    viewportSize.height,
+    viewportSize.width
+  ]);
+
+  const transitionSourceScreenPoint = transitionEditorSourcePlacement
+    ? getScreenPoint(transitionEditorSourcePlacement.posXPct, transitionEditorSourcePlacement.posYPct)
+    : null;
+  const transitionTargetScreenPoint = transitionEditorTargetPlacement
+    ? getScreenPoint(transitionEditorTargetPlacement.posXPct, transitionEditorTargetPlacement.posYPct)
+    : null;
+  const transitionWaypointScreenPoints = useMemo(
+    () => pairsToScreenPct(transitionWaypointPointsPct, map, viewportSize.width, viewportSize.height),
+    [map, mapViewVersion, transitionWaypointPointsPct, viewportSize.height, viewportSize.width]
+  );
+
+  async function handleCreateDrawingLine(pointsPct: number[], style: MapDrawingLineStyle) {
+    const worldPointsPct = pairsToWorldPct(pointsPct, mapInstanceRef.current, viewportSize.width, viewportSize.height);
+    await onCreateDrawingLine(worldPointsPct, style);
   }
 
   async function handlePlacementPointerUp(event: ReactPointerEvent<HTMLButtonElement>, placement: MapIconPlacement) {
-    const pct = getPctFromPointer(event.clientX, event.clientY);
-    placementDragStartRef.current = null;
+    const pct = getWorldPctFromPointer(event.clientX, event.clientY);
     event.currentTarget.releasePointerCapture(event.pointerId);
 
     if (!pct) {
@@ -268,15 +337,11 @@ export function MapCanvas({
   async function handleDrop(event: ReactDragEvent<HTMLDivElement>) {
     event.preventDefault();
 
-    if (!isEditable) {
+    if (!isEditable || !dragLibraryIcon) {
       return;
     }
 
-    if (!dragLibraryIcon) {
-      return;
-    }
-
-    const pct = getPctFromPointer(event.clientX, event.clientY);
+    const pct = getWorldPctFromPointer(event.clientX, event.clientY);
 
     if (!pct) {
       return;
@@ -297,7 +362,7 @@ export function MapCanvas({
       return;
     }
 
-    const pct = getPctFromPointer(event.clientX, event.clientY);
+    const pct = getWorldPctFromPointer(event.clientX, event.clientY);
 
     if (!pct) {
       return;
@@ -316,100 +381,6 @@ export function MapCanvas({
     event.currentTarget.releasePointerCapture(event.pointerId);
   }
 
-  function handleWheel(event: ReactWheelEvent<HTMLDivElement>) {
-    event.preventDefault();
-
-    if (!mediaSize.width || !mediaSize.height || !viewportSize.width || !viewportSize.height) {
-      return;
-    }
-
-    const delta = event.deltaY > 0 ? -0.15 : 0.15;
-    const nextZoom = clamp(Number((zoom + delta).toFixed(2)), minZoom, MAX_ZOOM);
-
-    if (nextZoom === zoom) {
-      return;
-    }
-
-    const viewportRect = viewportRef.current?.getBoundingClientRect();
-
-    if (!viewportRect) {
-      setZoom(nextZoom);
-      return;
-    }
-
-    const pointerX = event.clientX - viewportRect.left;
-    const pointerY = event.clientY - viewportRect.top;
-    const currentImageLeft = (viewportSize.width - renderedWidth) / 2 + pan.x;
-    const currentImageTop = (viewportSize.height - renderedHeight) / 2 + pan.y;
-    const imageRelativeX = renderedWidth ? (pointerX - currentImageLeft) / renderedWidth : 0.5;
-    const imageRelativeY = renderedHeight ? (pointerY - currentImageTop) / renderedHeight : 0.5;
-    const nextRenderedWidth = mediaSize.width * baseScale * nextZoom;
-    const nextRenderedHeight = mediaSize.height * baseScale * nextZoom;
-    const unclampedPan = {
-      x: pointerX - imageRelativeX * nextRenderedWidth - (viewportSize.width - nextRenderedWidth) / 2,
-      y: pointerY - imageRelativeY * nextRenderedHeight - (viewportSize.height - nextRenderedHeight) / 2
-    };
-
-    setZoom(nextZoom);
-    setPan(clampPan(unclampedPan, nextRenderedWidth, nextRenderedHeight, viewportSize.width, viewportSize.height));
-  }
-
-  function handleViewportPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
-    const target = event.target;
-
-    if (target instanceof HTMLElement && target.closest(".placed-icon-wrap")) {
-      return;
-    }
-
-    if (isDrawingEnabled || isTransitionEditing) {
-      return;
-    }
-
-    if (!displayMediaSource) {
-      return;
-    }
-
-    if (renderedWidth <= viewportSize.width && renderedHeight <= viewportSize.height) {
-      return;
-    }
-
-    mapPanStartRef.current = { x: event.clientX, y: event.clientY };
-    panOriginRef.current = pan;
-    event.currentTarget.setPointerCapture(event.pointerId);
-  }
-
-  function handleViewportPointerMove(event: ReactPointerEvent<HTMLDivElement>) {
-    if (!mapPanStartRef.current) {
-      return;
-    }
-
-    event.preventDefault();
-
-    const deltaX = event.clientX - mapPanStartRef.current.x;
-    const deltaY = event.clientY - mapPanStartRef.current.y;
-    const nextPan = clampPan(
-      {
-        x: panOriginRef.current.x + deltaX,
-        y: panOriginRef.current.y + deltaY
-      },
-      renderedWidth,
-      renderedHeight,
-      viewportSize.width,
-      viewportSize.height
-    );
-
-    setPan(nextPan);
-  }
-
-  function handleViewportPointerUp(event: ReactPointerEvent<HTMLDivElement>) {
-    if (!mapPanStartRef.current) {
-      return;
-    }
-
-    mapPanStartRef.current = null;
-    event.currentTarget.releasePointerCapture(event.pointerId);
-  }
-
   function handleViewportClick(event: ReactMouseEvent<HTMLDivElement>) {
     if (!isTransitionEditing) {
       return;
@@ -421,7 +392,7 @@ export function MapCanvas({
       return;
     }
 
-    const pct = getPctFromPointer(event.clientX, event.clientY);
+    const pct = getWorldPctFromPointer(event.clientX, event.clientY);
 
     if (!pct) {
       return;
@@ -430,12 +401,125 @@ export function MapCanvas({
     onAddTransitionWaypoint(pct.x, pct.y);
   }
 
-  const imageStyle: CSSProperties = {
-    width: `${renderedWidth}px`,
-    height: `${renderedHeight}px`,
-    left: `${imageLeft}px`,
-    top: `${imageTop}px`
-  };
+  const hasDayLayerTransition = transitionProgress < 1 || previousDrawingLines.length > 0 || previousPlacements.length > 0;
+  const currentLayerOpacity = hasDayLayerTransition ? transitionProgress : 1;
+  const previousLayerOpacity = hasDayLayerTransition ? 1 - transitionProgress : 0;
+
+  function renderPlacements(items: MapIconPlacement[], isInteractive: boolean) {
+    return items.map((placement) => {
+      const animatedPosition = isInteractive ? animatedPlacementPositions[placement.id] : null;
+      const screenPoint = getScreenPoint(
+        animatedPosition?.x ?? placement.posXPct,
+        animatedPosition?.y ?? placement.posYPct
+      );
+
+      if (!screenPoint) {
+        return null;
+      }
+
+      return (
+        <div
+          key={placement.id}
+          className="placed-icon-wrap"
+          style={{
+            left: `${screenPoint.xPct}%`,
+            top: `${screenPoint.yPct}%`
+          }}
+        >
+          <button
+            className="placed-icon-button"
+            onClick={
+              !isEditable && isInteractive
+                ? (event) => {
+                    event.stopPropagation();
+                    onActivatePlacement?.(placement);
+                  }
+                : undefined
+            }
+            onPointerDown={
+              isEditable && isInteractive
+                ? (event) => {
+                    event.stopPropagation();
+                    event.preventDefault();
+                    event.currentTarget.setPointerCapture(event.pointerId);
+                  }
+                : undefined
+            }
+            onPointerMove={
+              isEditable && isInteractive
+                ? (event) => {
+                    event.stopPropagation();
+                    event.preventDefault();
+                  }
+                : undefined
+            }
+            onPointerUp={
+              isEditable && isInteractive
+                ? (event) => {
+                    event.stopPropagation();
+                    void handlePlacementPointerUp(event, placement);
+                  }
+                : undefined
+            }
+            onPointerCancel={
+              isEditable && isInteractive
+                ? (event) => {
+                    event.stopPropagation();
+                  }
+                : undefined
+            }
+            style={!isInteractive ? { pointerEvents: "none" } : undefined}
+            type="button"
+          >
+            {placement.iconoDataUrl ? (
+              <img
+                alt={placement.nombreIcono ?? "Icono"}
+                className="placed-icon-image"
+                src={placement.iconoDataUrl}
+              />
+            ) : null}
+          </button>
+          {isEditable && isInteractive ? (
+            <>
+              <button
+                className="placed-icon-delete"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  void onDeletePlacement(placement.id);
+                }}
+                onPointerDown={(event) => event.stopPropagation()}
+                type="button"
+              >
+                x
+              </button>
+              <button
+                className="placed-icon-menu"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onEditPlacement(placement);
+                }}
+                onPointerDown={(event) => event.stopPropagation()}
+                type="button"
+              >
+                ...
+              </button>
+              <button
+                className="placed-icon-transition"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onEditTransition(placement);
+                }}
+                onPointerDown={(event) => event.stopPropagation()}
+                type="button"
+              >
+                -&gt;
+              </button>
+            </>
+          ) : null}
+        </div>
+      );
+    });
+  }
 
   return (
     <section className="map-stage">
@@ -450,94 +534,85 @@ export function MapCanvas({
         }}
         onDrop={(event) => void handleDrop(event)}
         onClick={handleViewportClick}
-        onPointerCancel={handleViewportPointerUp}
-        onPointerDown={handleViewportPointerDown}
-        onPointerMove={handleViewportPointerMove}
-        onPointerUp={handleViewportPointerUp}
-        onWheel={handleWheel}
       >
-        {displayMediaSource && !mediaLoadFailed ? (
-          <>
-            {backgroundMediaType === "video" ? (
-              <video
-                aria-label={activeDay?.etiquetaFecha ?? "Fondo del mapa de las Islas Malvinas"}
-                autoPlay
-                className="map-video"
-                loop
-                muted
-                onError={() => setMediaLoadFailed(true)}
-                onLoadedMetadata={(event) =>
-                  setMediaSize({
-                    width: event.currentTarget.videoWidth,
-                    height: event.currentTarget.videoHeight
-                  })
-                }
-                playsInline
-                src={displayMediaSource}
-                style={imageStyle}
-              />
-            ) : (
-              <img
-                alt={activeDay?.etiquetaFecha ?? "Mapa de las Islas Malvinas"}
-                className="map-image"
-                draggable={false}
-                onError={() => setMediaLoadFailed(true)}
-                onLoad={(event) =>
-                  setMediaSize({
-                    width: event.currentTarget.naturalWidth,
-                    height: event.currentTarget.naturalHeight
-                  })
-                }
-                src={displayMediaSource}
-                style={imageStyle}
-              />
-            )}
+        <div
+          ref={mapContainerRef}
+          aria-label={activeDay?.etiquetaFecha ?? "Mapa satelital"}
+          className="maplibre-background"
+        />
 
-            <div className="drawing-layer-surface" style={imageStyle}>
-              <div className="drawing-layer-wrap" style={{ width: `${renderedWidth}px`, height: `${renderedHeight}px` }}>
-                <MapDrawingLayer
-                  drawingTool={drawingTool}
-                  height={renderedHeight}
-                  isDrawingEnabled={isEditable && isDrawingEnabled}
-                  lineStyle={drawingLineStyle}
-                  lines={drawingLines}
-                  onCreateLine={onCreateDrawingLine}
-                  width={renderedWidth}
-                />
-              </div>
+        {viewportSize.width && viewportSize.height ? (
+          <>
+            {hasDayLayerTransition ? (
+              <>
+                <div
+                  className="drawing-layer-surface day-layer-previous"
+                  style={{ opacity: previousLayerOpacity }}
+                >
+                  <MapDrawingLayer
+                    drawingTool={drawingTool}
+                    height={viewportSize.height}
+                    isDrawingEnabled={false}
+                    lineStyle={drawingLineStyle}
+                    lines={previousScreenDrawingLines}
+                    linesRevealProgress={1}
+                    onCreateLine={handleCreateDrawingLine}
+                    width={viewportSize.width}
+                  />
+                </div>
+                <div
+                  className="placed-icons-layer day-layer-previous"
+                  style={{ opacity: previousLayerOpacity }}
+                >
+                  {renderPlacements(previousPlacements, false)}
+                </div>
+              </>
+            ) : null}
+
+            <div className="drawing-layer-surface day-layer-current" style={{ opacity: currentLayerOpacity }}>
+              <MapDrawingLayer
+                drawingTool={drawingTool}
+                height={viewportSize.height}
+                isDrawingEnabled={isEditable && isDrawingEnabled}
+                lineStyle={drawingLineStyle}
+                lines={screenDrawingLines}
+                linesRevealProgress={hasDayLayerTransition ? transitionProgress : 1}
+                onCreateLine={handleCreateDrawingLine}
+                width={viewportSize.width}
+              />
             </div>
 
-            <div className="placed-icons-layer" style={imageStyle}>
+            <div className="placed-icons-layer day-layer-current" style={{ opacity: currentLayerOpacity }}>
               {transitionPreviewPointsPct.length >= 4 ? (
-                <svg className="transition-overlay" height={renderedHeight} width={renderedWidth}>
+                <svg className="transition-overlay" height={viewportSize.height} width={viewportSize.width}>
                   <polyline
                     className="transition-path-line"
-                    points={toSvgPolylinePoints(transitionPreviewPointsPct, renderedWidth, renderedHeight)}
+                    points={toSvgPolylinePoints(transitionPreviewPointsPct, viewportSize.width, viewportSize.height)}
                   />
                 </svg>
               ) : null}
 
-              {transitionEditorSourcePlacement ? (
+              {transitionSourceScreenPoint ? (
                 <div
                   className="transition-endpoint-marker source"
                   style={{
-                    left: `${transitionEditorSourcePlacement.posXPct}%`,
-                    top: `${transitionEditorSourcePlacement.posYPct}%`
+                    left: `${transitionSourceScreenPoint.xPct}%`,
+                    top: `${transitionSourceScreenPoint.yPct}%`
                   }}
                 />
               ) : null}
 
-              {transitionEditorTargetPlacement ? (
+              {transitionTargetScreenPoint ? (
                 <div
                   className="transition-endpoint-marker target"
                   style={{
-                    left: `${transitionEditorTargetPlacement.posXPct}%`,
-                    top: `${transitionEditorTargetPlacement.posYPct}%`
+                    left: `${transitionTargetScreenPoint.xPct}%`,
+                    top: `${transitionTargetScreenPoint.yPct}%`
                   }}
                 />
               ) : null}
 
-              {transitionWaypointPointsPct.map((_, index) =>
+              {transitionWaypointScreenPoints.map((_, index) =>
                 index % 2 === 0 ? (
                   <button
                     key={`transition-waypoint-${index / 2}`}
@@ -547,120 +622,15 @@ export function MapCanvas({
                     onPointerMove={handleTransitionWaypointPointerMove}
                     onPointerUp={handleTransitionWaypointPointerUp}
                     style={{
-                      left: `${transitionWaypointPointsPct[index]}%`,
-                      top: `${transitionWaypointPointsPct[index + 1]}%`
+                      left: `${transitionWaypointScreenPoints[index]}%`,
+                      top: `${transitionWaypointScreenPoints[index + 1]}%`
                     }}
                     type="button"
                   />
                 ) : null
               )}
 
-              {placements.map((placement) => (
-                <div
-                  key={placement.id}
-                  className="placed-icon-wrap"
-                  style={{
-                    left: `${(animatedPlacementPositions[placement.id]?.x ?? placement.posXPct)}%`,
-                    top: `${(animatedPlacementPositions[placement.id]?.y ?? placement.posYPct)}%`
-                  }}
-                >
-                  <button
-                    className="placed-icon-button"
-                    onClick={
-                      !isEditable
-                        ? (event) => {
-                            event.stopPropagation();
-                            onActivatePlacement?.(placement);
-                          }
-                        : undefined
-                    }
-                    onPointerDown={
-                      isEditable
-                        ? (event) => {
-                            event.stopPropagation();
-                            event.preventDefault();
-                            placementDragStartRef.current = { x: event.clientX, y: event.clientY };
-                            placementOriginRef.current = {
-                              posXPct: placement.posXPct,
-                              posYPct: placement.posYPct
-                            };
-                            event.currentTarget.setPointerCapture(event.pointerId);
-                          }
-                        : undefined
-                    }
-                    onPointerMove={
-                      isEditable
-                        ? (event) => {
-                            event.stopPropagation();
-                            void handlePlacementPointerMove(event, placement);
-                          }
-                        : undefined
-                    }
-                    onPointerUp={
-                      isEditable
-                        ? (event) => {
-                            event.stopPropagation();
-                            void handlePlacementPointerUp(event, placement);
-                          }
-                        : undefined
-                    }
-                    onPointerCancel={
-                      isEditable
-                        ? (event) => {
-                            event.stopPropagation();
-                            placementDragStartRef.current = null;
-                          }
-                        : undefined
-                    }
-                    type="button"
-                  >
-                    {placement.iconoDataUrl ? (
-                      <img
-                        alt={placement.nombreIcono ?? "Icono"}
-                        className="placed-icon-image"
-                        src={placement.iconoDataUrl}
-                      />
-                    ) : null}
-                  </button>
-                  {isEditable ? (
-                    <>
-                      <button
-                        className="placed-icon-delete"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          void onDeletePlacement(placement.id);
-                        }}
-                        onPointerDown={(event) => event.stopPropagation()}
-                        type="button"
-                      >
-                        x
-                      </button>
-                      <button
-                        className="placed-icon-menu"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          onEditPlacement(placement);
-                        }}
-                        onPointerDown={(event) => event.stopPropagation()}
-                        type="button"
-                      >
-                        ...
-                      </button>
-                      <button
-                        className="placed-icon-transition"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          onEditTransition(placement);
-                        }}
-                        onPointerDown={(event) => event.stopPropagation()}
-                        type="button"
-                      >
-                        →
-                      </button>
-                    </>
-                  ) : null}
-                </div>
-              ))}
+              {renderPlacements(placements, true)}
             </div>
           </>
         ) : (

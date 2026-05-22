@@ -24,7 +24,6 @@ declare global {
       createDay: (payload: CreateDayPayload) => Promise<BootstrapData>;
       deleteDay: (dayId: number) => Promise<BootstrapData>;
       updateDay: (payload: UpdateDayPayload) => Promise<BootstrapData>;
-      selectDayBackground: () => Promise<string | null>;
       selectIconPng: () => Promise<string | null>;
       createDayIcon: (payload: CreateDayIconPayload) => Promise<BootstrapData>;
       deleteDayIcon: (payload: DeleteDayIconPayload) => Promise<BootstrapData>;

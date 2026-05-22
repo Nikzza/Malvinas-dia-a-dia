@@ -6,9 +6,9 @@ type TopTimelineProps = {
   activeDayId: number | null;
   isEditable: boolean;
   onSelectDay: (dayId: number) => void;
-  onAddDay: (label: string, rutaImagenFondo: string | null) => Promise<void>;
+  onAddDay: (label: string) => Promise<void>;
   onDeleteDay: (dayId: number) => Promise<void>;
-  onUpdateDay: (dayId: number, label: string, rutaImagenFondo: string | null) => Promise<void>;
+  onUpdateDay: (dayId: number, label: string) => Promise<void>;
   isSavingDay: boolean;
 };
 
@@ -24,10 +24,8 @@ export function TopTimeline({
 }: TopTimelineProps) {
   const [isAdding, setIsAdding] = useState(false);
   const [newDayLabel, setNewDayLabel] = useState("");
-  const [newDayImagePath, setNewDayImagePath] = useState<string | null>(null);
   const [editingDayId, setEditingDayId] = useState<number | null>(null);
   const [editingLabel, setEditingLabel] = useState("");
-  const [editingImagePath, setEditingImagePath] = useState<string | null>(null);
 
   async function handleSubmit() {
     const trimmedLabel = newDayLabel.trim();
@@ -36,9 +34,8 @@ export function TopTimeline({
       return;
     }
 
-    await onAddDay(trimmedLabel, newDayImagePath);
+    await onAddDay(trimmedLabel);
     setNewDayLabel("");
-    setNewDayImagePath(null);
     setIsAdding(false);
   }
 
@@ -49,25 +46,9 @@ export function TopTimeline({
       return;
     }
 
-    await onUpdateDay(editingDayId, trimmedLabel, editingImagePath);
+    await onUpdateDay(editingDayId, trimmedLabel);
     setEditingDayId(null);
     setEditingLabel("");
-    setEditingImagePath(null);
-  }
-
-  async function handlePickImage(target: "new" | "edit") {
-    const selectedPath = await window.mapaMalvinas.selectDayBackground();
-
-    if (!selectedPath) {
-      return;
-    }
-
-    if (target === "edit") {
-      setEditingImagePath(selectedPath);
-      return;
-    }
-
-    setNewDayImagePath(selectedPath);
   }
 
   return (
@@ -95,15 +76,6 @@ export function TopTimeline({
                   type="text"
                   value={editingLabel}
                 />
-                <button
-                  aria-label="Elegir fondo del dia"
-                  className="timeline-icon-button"
-                  onClick={() => void handlePickImage("edit")}
-                  title="Elegir fondo del dia"
-                  type="button"
-                >
-                  <span className="folder-icon" aria-hidden="true" />
-                </button>
               </div>
               <div className="timeline-edit-actions">
                 <button className="timeline-mini-button" onClick={() => void handleUpdateSubmit()} type="button">
@@ -114,7 +86,6 @@ export function TopTimeline({
                   onClick={() => {
                     setEditingDayId(null);
                     setEditingLabel("");
-                    setEditingImagePath(null);
                   }}
                   type="button"
                 >
@@ -132,7 +103,6 @@ export function TopTimeline({
                     ? () => {
                         setEditingDayId(day.id);
                         setEditingLabel(day.etiquetaFecha);
-                        setEditingImagePath(day.rutaImagenFondo);
                       }
                     : undefined
                 }
@@ -178,15 +148,6 @@ export function TopTimeline({
                 type="text"
                 value={newDayLabel}
               />
-                <button
-                  aria-label="Elegir fondo del dia"
-                  className="timeline-icon-button"
-                  onClick={() => void handlePickImage("new")}
-                  title="Elegir fondo del dia"
-                  type="button"
-                >
-                  <span className="folder-icon" aria-hidden="true" />
-                </button>
             </div>
 
             <div className="timeline-edit-actions">
@@ -198,7 +159,6 @@ export function TopTimeline({
                 onClick={() => {
                   setIsAdding(false);
                   setNewDayLabel("");
-                  setNewDayImagePath(null);
                 }}
                 type="button"
               >

@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties, ChangeEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
-import { gsap } from "gsap";
+import type { ChangeEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { BootstrapData } from "../shared/types/ipc";
-import type { MapDrawingLineStyle } from "../shared/types/mapDrawingLine";
+import type { MapDrawingLine, MapDrawingLineStyle } from "../shared/types/mapDrawingLine";
 import type { DayIcon } from "../shared/types/dayIcon";
 import type { MapIconPlacement } from "../shared/types/mapIconPlacement";
 import type { MapIconTransition } from "../shared/types/mapIconTransition";
@@ -14,6 +13,7 @@ type AppMode = "menu" | "edit" | "view";
 type MediaContentType = "imagen" | "video";
 const EDIT_PASSWORD = "1111";
 const TRANSITION_ANIMATION_MS = 1800;
+const DAY_LAYER_TRANSITION_MS = 900;
 
 type TransitionEditingState = {
   transitionId: number | null;
@@ -22,17 +22,10 @@ type TransitionEditingState = {
   waypointPointsPct: number[];
 };
 
-const CLOUD_TRANSITION_LAYOUT = [
-  { left: "8%", top: "12%", width: 280, height: 150, delay: 0 },
-  { left: "24%", top: "4%", width: 340, height: 170, delay: 0.04 },
-  { left: "56%", top: "8%", width: 320, height: 164, delay: 0.08 },
-  { left: "76%", top: "18%", width: 260, height: 142, delay: 0.12 },
-  { left: "14%", top: "46%", width: 360, height: 182, delay: 0.05 },
-  { left: "48%", top: "40%", width: 390, height: 190, delay: 0.1 },
-  { left: "74%", top: "54%", width: 280, height: 148, delay: 0.16 },
-  { left: "22%", top: "74%", width: 300, height: 152, delay: 0.09 },
-  { left: "58%", top: "76%", width: 340, height: 168, delay: 0.13 }
-] as const;
+type DayLayerSnapshot = {
+  drawingLines: MapDrawingLine[];
+  placements: MapIconPlacement[];
+};
 
 export function App() {
   const [data, setData] = useState<BootstrapData | null>(null);
@@ -58,10 +51,8 @@ export function App() {
   const [editPasswordDigits, setEditPasswordDigits] = useState(["", "", "", ""]);
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [isDayTransitionRunning, setIsDayTransitionRunning] = useState(false);
-  const [isCloudTransitionEnabled, setIsCloudTransitionEnabled] = useState(false);
-  const mapSceneRef = useRef<HTMLDivElement | null>(null);
-  const cloudTransitionRef = useRef<HTMLDivElement | null>(null);
-  const cloudRefs = useRef<Array<HTMLDivElement | null>>([]);
+  const [dayLayerSnapshot, setDayLayerSnapshot] = useState<DayLayerSnapshot | null>(null);
+  const [dayLayerTransitionProgress, setDayLayerTransitionProgress] = useState(1);
 
   useEffect(() => {
     window.mapaMalvinas
@@ -95,10 +86,6 @@ export function App() {
   const previousActiveDayIdRef = useRef<number | null>(null);
   const transitionSourcePlacement = transitionEditing ? placementById.get(transitionEditing.sourcePlacementId) ?? null : null;
   const transitionTargetPlacement = transitionEditing ? placementById.get(transitionEditing.targetPlacementId) ?? null : null;
-
-  function setCloudRef(index: number, element: HTMLDivElement | null) {
-    cloudRefs.current[index] = element;
-  }
 
   useEffect(() => {
     setSelectedPlacement(null);
@@ -215,14 +202,13 @@ export function App() {
     };
   }, [activeDayId, days, mode, placementById, transitions]);
 
-  async function handleCreateDay(label: string, rutaImagenFondo: string | null) {
+  async function handleCreateDay(label: string) {
     setIsSavingDay(true);
     setError(null);
 
     try {
       const nextData = await window.mapaMalvinas.createDay({
-        etiquetaFecha: label,
-        rutaImagenFondo
+        etiquetaFecha: label
       });
       setData(nextData);
       setActiveDayId(nextData.days[nextData.days.length - 1]?.id ?? null);
@@ -234,8 +220,8 @@ export function App() {
     }
   }
 
-  async function handleAddDay(label: string, rutaImagenFondo: string | null) {
-    await handleCreateDay(label, rutaImagenFondo);
+  async function handleAddDay(label: string) {
+    await handleCreateDay(label);
   }
 
   async function handleDeleteDay(dayId: number) {
@@ -257,14 +243,13 @@ export function App() {
     }
   }
 
-  async function handleUpdateDay(dayId: number, label: string, rutaImagenFondo: string | null) {
+  async function handleUpdateDay(dayId: number, label: string) {
     setError(null);
 
     try {
       const nextData = await window.mapaMalvinas.updateDay({
         id: dayId,
-        etiquetaFecha: label,
-        rutaImagenFondo
+        etiquetaFecha: label
       });
       setData(nextData);
     } catch (cause: unknown) {
@@ -411,78 +396,43 @@ export function App() {
       return;
     }
 
-    if (!isViewMode || isDayTransitionRunning || !isCloudTransitionEnabled) {
-      if (!isDayTransitionRunning) {
-        setActiveDayId(nextDayId);
-      }
+    if (isDayTransitionRunning) {
       return;
     }
 
-    const overlay = cloudTransitionRef.current;
-    const scene = mapSceneRef.current;
-    const clouds = cloudRefs.current.filter(Boolean) as HTMLDivElement[];
-
-    if (!overlay || !scene || clouds.length === 0) {
+    if (!activeDayId) {
       setActiveDayId(nextDayId);
       return;
     }
 
+    setDayLayerSnapshot({
+      drawingLines: activeDrawingLines,
+      placements: activeMapPlacements
+    });
+    setDayLayerTransitionProgress(0);
     setIsDayTransitionRunning(true);
+    setActiveDayId(nextDayId);
 
-    gsap.killTweensOf([overlay, scene, ...clouds]);
-    gsap.set(overlay, { autoAlpha: 0 });
-    gsap.set(scene, { scale: 1, filter: "blur(0px)", transformOrigin: "50% 50%" });
-    gsap.set(clouds, {
-      autoAlpha: 0,
-      scale: 0.38,
-      x: (_index: number) => gsap.utils.random(-220, 220),
-      y: (_index: number) => gsap.utils.random(-130, 130),
-      rotate: (_index: number) => gsap.utils.random(-14, 14),
-      filter: "blur(18px)"
-    });
+    const startTime = performance.now();
+    let animationFrame = 0;
 
-    const timeline = gsap.timeline({
-      onComplete: () => {
-        gsap.set(overlay, { autoAlpha: 0 });
-        gsap.set(scene, { clearProps: "transform,filter" });
-        gsap.set(clouds, { clearProps: "transform,filter,opacity,visibility" });
-        setIsDayTransitionRunning(false);
+    const runFrame = (now: number) => {
+      const progress = Math.min(1, (now - startTime) / DAY_LAYER_TRANSITION_MS);
+      const easedProgress = easeInOutCubic(progress);
+
+      setDayLayerTransitionProgress(easedProgress);
+
+      if (progress < 1) {
+        animationFrame = window.requestAnimationFrame(runFrame);
+        return;
       }
-    });
 
-    timeline
-      .to(overlay, { autoAlpha: 1, duration: 0.22, ease: "power2.out" })
-      .to(scene, { scale: 1.055, filter: "blur(1.4px)", duration: 0.92, ease: "power2.inOut" }, 0)
-      .to(
-        clouds,
-        {
-          autoAlpha: 0.96,
-          scale: 1.18,
-          x: 0,
-          y: 0,
-          rotate: 0,
-          filter: "blur(8px)",
-          duration: 0.44,
-          ease: "power3.out",
-          stagger: (index: number) => CLOUD_TRANSITION_LAYOUT[index]?.delay ?? index * 0.03
-        },
-        0
-      )
-      .add(() => setActiveDayId(nextDayId), 0.42)
-      .to(
-        clouds,
-        {
-          autoAlpha: 0,
-          scale: 1.64,
-          filter: "blur(22px)",
-          duration: 0.56,
-          ease: "power2.in",
-          stagger: { each: 0.026, from: "center" }
-        },
-        0.72
-      )
-      .to(overlay, { autoAlpha: 0, duration: 0.38, ease: "power2.inOut" }, 0.9)
-      .to(scene, { scale: 1, filter: "blur(0px)", duration: 0.4, ease: "power2.out" }, 0.9);
+      setDayLayerSnapshot(null);
+      setDayLayerTransitionProgress(1);
+      setIsDayTransitionRunning(false);
+    };
+
+    animationFrame = window.requestAnimationFrame(runFrame);
   }
 
   function handleStartTransitionEdit(sourcePlacement: MapIconPlacement) {
@@ -837,15 +787,6 @@ export function App() {
       </button>
 
       <div className="mode-badge">{isEditMode ? "Modo edicion" : "Modo visualizacion"}</div>
-      {isViewMode ? (
-        <button
-          className={isCloudTransitionEnabled ? "transition-toggle-button active" : "transition-toggle-button"}
-          onClick={() => setIsCloudTransitionEnabled((current) => !current)}
-          type="button"
-        >
-          {isCloudTransitionEnabled ? "Transicion nubes: si" : "Transicion nubes: no"}
-        </button>
-      ) : null}
 
       <TopTimeline
         activeDayId={activeDayId}
@@ -858,7 +799,7 @@ export function App() {
         onUpdateDay={handleUpdateDay}
       />
 
-      <div ref={mapSceneRef} className="map-scene-wrap">
+      <div className="map-scene-wrap">
         <MapCanvas
           activeDay={activeDay}
           animatedPlacementPositions={animatedPlacementPositions}
@@ -879,29 +820,13 @@ export function App() {
           onMovePlacement={handleMovePlacement}
           onMoveTransitionWaypoint={handleMoveTransitionWaypoint}
           placements={activeMapPlacements}
+          previousDrawingLines={dayLayerSnapshot?.drawingLines ?? []}
+          previousPlacements={dayLayerSnapshot?.placements ?? []}
+          transitionProgress={dayLayerTransitionProgress}
           transitionEditorSourcePlacement={transitionSourcePlacement}
           transitionEditorTargetPlacement={transitionTargetPlacement}
           transitionWaypointPointsPct={transitionEditing?.waypointPointsPct ?? []}
         />
-      </div>
-
-      <div ref={cloudTransitionRef} aria-hidden="true" className="day-cloud-transition">
-        <div className="day-cloud-transition-veil" />
-        {CLOUD_TRANSITION_LAYOUT.map((cloud, index) => (
-          <div
-            key={`cloud-${index}`}
-            ref={(element) => setCloudRef(index, element)}
-            className="day-cloud-puff"
-            style={
-              {
-                left: cloud.left,
-                top: cloud.top,
-                width: `${cloud.width}px`,
-                height: `${cloud.height}px`
-              } as CSSProperties
-            }
-          />
-        ))}
       </div>
 
       {isEditMode && editingPlacement ? (
@@ -1335,6 +1260,10 @@ function getPointAlongPolyline(pointsPct: number[], progress: number) {
     x: pointsPct[pointsPct.length - 2],
     y: pointsPct[pointsPct.length - 1]
   };
+}
+
+function easeInOutCubic(progress: number) {
+  return progress < 0.5 ? 4 * progress * progress * progress : 1 - Math.pow(-2 * progress + 2, 3) / 2;
 }
 
 function getFileExtension(filePath: string) {
