@@ -102,7 +102,7 @@ export function TopTimeline({
         onClick={() => handleScrollTimeline(-1)}
         type="button"
       >
-        {"<"}
+        &lsaquo;
       </button>
 
       <div ref={trackRef} className="timeline-track" onWheel={handleTimelineWheel}>
@@ -236,7 +236,7 @@ export function TopTimeline({
         onClick={() => handleScrollTimeline(1)}
         type="button"
       >
-        {">"}
+        &rsaquo;
       </button>
     </header>
   );

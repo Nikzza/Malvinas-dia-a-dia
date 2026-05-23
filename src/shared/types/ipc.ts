@@ -1,7 +1,7 @@
 import type { Day } from "./day";
 import type { DayIcon } from "./dayIcon";
 import type { MapDrawingLine, MapDrawingLineStyle } from "./mapDrawingLine";
-import type { MapIconPlacement } from "./mapIconPlacement";
+import type { MapIconPlacement, MapPinKind } from "./mapIconPlacement";
 import type { MapIconTransition } from "./mapIconTransition";
 
 export type IpcResponse<T> = {
@@ -79,6 +79,7 @@ export type DeleteMapIconTransitionPayload = {
 
 export type UpdateMapIconPlacementContentPayload = {
   placementId: number;
+  pinKind: MapPinKind;
   tipoContenido: "texto" | "imagen" | "video" | null;
   tituloContenido: string | null;
   textoDescriptivo: string | null;

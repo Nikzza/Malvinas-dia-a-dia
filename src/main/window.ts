@@ -7,7 +7,7 @@ export function createMainWindow() {
     height: 1080,
     minWidth: 1280,
     minHeight: 720,
-    backgroundColor: "#0d1b2a",
+    backgroundColor: "#0d1117",
     autoHideMenuBar: true,
     show: false,
     webPreferences: {

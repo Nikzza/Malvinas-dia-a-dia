@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS iconos_mapa (
   id_icono_biblioteca INTEGER NOT NULL,
   pos_x_pct REAL NOT NULL,
   pos_y_pct REAL NOT NULL,
+  tipo_pin TEXT NOT NULL DEFAULT 'land',
   tipo_contenido TEXT,
   texto_descriptivo TEXT,
   ruta_recurso_local TEXT,

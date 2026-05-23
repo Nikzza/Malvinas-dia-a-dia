@@ -344,7 +344,7 @@ export function MapDrawingLayer({
             listening={false}
             opacity={linesOpacity}
             points={getPartialCanvasPoints(toCanvasPoints(line.pointsPct, width, height), linesRevealProgress)}
-            stroke="#f6d98d"
+            stroke="#DBB060"
             strokeWidth={6}
           />
         ))}
@@ -355,7 +355,7 @@ export function MapDrawingLayer({
             lineJoin="round"
             listening={false}
             points={renderedCurrentPoints}
-            stroke="#f6d98d"
+            stroke="#DBB060"
             strokeWidth={6}
           />
         ) : null}
@@ -366,17 +366,17 @@ export function MapDrawingLayer({
             lineJoin="round"
             listening={false}
             points={pointToPointPreview}
-            stroke="#f6d98d"
+            stroke="#DBB060"
             strokeWidth={6}
           />
         ) : null}
         {pointMarkers.map((point, index) => (
           <Circle
             key={`marker-${index}`}
-            fill="#f6d98d"
+            fill="#DBB060"
             listening={false}
             radius={6}
-            stroke="#f6d98d"
+            stroke="#DBB060"
             strokeWidth={0}
             x={(point.xPct / 100) * width}
             y={(point.yPct / 100) * height}

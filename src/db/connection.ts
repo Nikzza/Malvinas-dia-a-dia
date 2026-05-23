@@ -87,6 +87,7 @@ function ensureIconCascadeDelete(db: Database.Database) {
         id_icono_biblioteca INTEGER NOT NULL,
         pos_x_pct REAL NOT NULL,
         pos_y_pct REAL NOT NULL,
+        tipo_pin TEXT NOT NULL DEFAULT 'land',
         tipo_contenido TEXT,
         texto_descriptivo TEXT,
         ruta_recurso_local TEXT,
@@ -116,6 +117,7 @@ function ensureIconCascadeDelete(db: Database.Database) {
         id_icono_biblioteca,
         pos_x_pct,
         pos_y_pct,
+        tipo_pin,
         tipo_contenido,
         texto_descriptivo,
         ruta_recurso_local,
@@ -129,6 +131,7 @@ function ensureIconCascadeDelete(db: Database.Database) {
         id_icono_biblioteca,
         pos_x_pct,
         pos_y_pct,
+        COALESCE(tipo_pin, 'land'),
         tipo_contenido,
         texto_descriptivo,
         ruta_recurso_local,
@@ -168,6 +171,7 @@ function ensureIconCascadeDelete(db: Database.Database) {
 }
 
 function runCompatibilityMigrations(db: Database.Database) {
+  ensureColumn(db, "iconos_mapa", "tipo_pin", "TEXT NOT NULL DEFAULT 'land'");
   ensureColumn(db, "iconos_mapa", "tipo_contenido", "TEXT");
   ensureColumn(db, "iconos_mapa", "texto_descriptivo", "TEXT");
   ensureColumn(db, "iconos_mapa", "ruta_recurso_local", "TEXT");

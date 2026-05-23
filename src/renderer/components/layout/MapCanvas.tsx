@@ -134,6 +134,15 @@ function toSvgPolylinePoints(pointsPct: number[], width: number, height: number)
   return points.join(" ");
 }
 
+function isNavalPlacement(placement: MapIconPlacement) {
+  if (placement.pinKind) {
+    return placement.pinKind === "naval";
+  }
+
+  const text = `${placement.nombreIcono ?? ""} ${placement.tituloContenido ?? ""} ${placement.textoDescriptivo ?? ""}`.toLowerCase();
+  return ["ara", "naval", "buque", "barco", "crucero", "submarino", "fragata"].some((keyword) => text.includes(keyword));
+}
+
 export function MapCanvas({
   activeDay,
   animatedPlacementPositions,
@@ -417,17 +426,19 @@ export function MapCanvas({
         return null;
       }
 
+      const pinKind = isNavalPlacement(placement) ? "naval" : "land";
+
       return (
         <div
           key={placement.id}
-          className="placed-icon-wrap"
+          className={`placed-icon-wrap ${pinKind}`}
           style={{
             left: `${screenPoint.xPct}%`,
             top: `${screenPoint.yPct}%`
           }}
         >
           <button
-            className="placed-icon-button"
+            className={`placed-icon-button ${pinKind}`}
             onClick={
               !isEditable && isInteractive
                 ? (event) => {
@@ -479,6 +490,9 @@ export function MapCanvas({
               />
             ) : null}
           </button>
+          <span className={`placed-icon-label ${pinKind}`}>
+            {placement.tituloContenido?.trim() || placement.nombreIcono || "Posicion"}
+          </span>
           {isEditable && isInteractive ? (
             <>
               <button

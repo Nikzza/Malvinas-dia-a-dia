@@ -325,6 +325,7 @@ function registerIpcHandlers() {
 
     mapIconPlacementRepository.updateContent(
       payload.placementId,
+      payload.pinKind,
       payload.tipoContenido,
       payload.tituloContenido,
       payload.textoDescriptivo,

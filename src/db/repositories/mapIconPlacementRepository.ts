@@ -1,5 +1,5 @@
 import { getDatabase } from "../connection";
-import type { MapIconPlacement } from "../../shared/types/mapIconPlacement";
+import type { MapIconPlacement, MapPinKind } from "../../shared/types/mapIconPlacement";
 
 type MapIconPlacementRow = {
   id: number;
@@ -7,6 +7,7 @@ type MapIconPlacementRow = {
   id_icono_biblioteca: number;
   pos_x_pct: number;
   pos_y_pct: number;
+  tipo_pin: MapPinKind;
   tipo_contenido: "texto" | "imagen" | "video" | null;
   titulo_contenido: string | null;
   texto_descriptivo: string | null;
@@ -21,7 +22,7 @@ export const mapIconPlacementRepository = {
     const rows = db
       .prepare(
         `
-          SELECT id, id_dia, id_icono_biblioteca, pos_x_pct, pos_y_pct, tipo_contenido, titulo_contenido, texto_descriptivo, ruta_recurso_local, created_at, updated_at
+          SELECT id, id_dia, id_icono_biblioteca, pos_x_pct, pos_y_pct, tipo_pin, tipo_contenido, titulo_contenido, texto_descriptivo, ruta_recurso_local, created_at, updated_at
           FROM iconos_mapa
           ORDER BY id_dia ASC, id ASC
         `
@@ -34,6 +35,7 @@ export const mapIconPlacementRepository = {
       libraryIconId: row.id_icono_biblioteca,
       posXPct: row.pos_x_pct,
       posYPct: row.pos_y_pct,
+      pinKind: row.tipo_pin,
       tipoContenido: row.tipo_contenido,
       tituloContenido: row.titulo_contenido,
       textoDescriptivo: row.texto_descriptivo,
@@ -63,6 +65,7 @@ export const mapIconPlacementRepository = {
   },
   updateContent: (
     placementId: number,
+    pinKind: MapPinKind,
     tipoContenido: "texto" | "imagen" | "video" | null,
     tituloContenido: string | null,
     textoDescriptivo: string | null,
@@ -72,10 +75,10 @@ export const mapIconPlacementRepository = {
     db.prepare(
       `
         UPDATE iconos_mapa
-        SET tipo_contenido = ?, titulo_contenido = ?, texto_descriptivo = ?, ruta_recurso_local = ?, updated_at = CURRENT_TIMESTAMP
+        SET tipo_pin = ?, tipo_contenido = ?, titulo_contenido = ?, texto_descriptivo = ?, ruta_recurso_local = ?, updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
       `
-    ).run(tipoContenido, tituloContenido, textoDescriptivo, rutaRecursoLocal, placementId);
+    ).run(pinKind, tipoContenido, tituloContenido, textoDescriptivo, rutaRecursoLocal, placementId);
   },
   remove: (placementId: number): void => {
     const db = getDatabase();

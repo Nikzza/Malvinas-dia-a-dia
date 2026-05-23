@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { BootstrapData } from "../shared/types/ipc";
 import type { MapDrawingLine, MapDrawingLineStyle } from "../shared/types/mapDrawingLine";
 import type { DayIcon } from "../shared/types/dayIcon";
-import type { MapIconPlacement } from "../shared/types/mapIconPlacement";
+import type { MapIconPlacement, MapPinKind } from "../shared/types/mapIconPlacement";
 import type { MapIconTransition } from "../shared/types/mapIconTransition";
 import type { MapDrawingTool } from "./components/layout/MapDrawingLayer";
 import { MapCanvas } from "./components/layout/MapCanvas";
@@ -36,6 +36,7 @@ export function App() {
   const [dragLibraryIcon, setDragLibraryIcon] = useState<DayIcon | null>(null);
   const [editingPlacement, setEditingPlacement] = useState<MapIconPlacement | null>(null);
   const [contentType, setContentType] = useState<"texto" | "imagen" | "video">("texto");
+  const [contentPinKind, setContentPinKind] = useState<MapPinKind>("land");
   const [contentTitle, setContentTitle] = useState("");
   const [contentText, setContentText] = useState("");
   const [contentResourcePath, setContentResourcePath] = useState<string | null>(null);
@@ -53,6 +54,8 @@ export function App() {
   const [isDayTransitionRunning, setIsDayTransitionRunning] = useState(false);
   const [dayLayerSnapshot, setDayLayerSnapshot] = useState<DayLayerSnapshot | null>(null);
   const [dayLayerTransitionProgress, setDayLayerTransitionProgress] = useState(1);
+  const drawingPanelRef = useRef<HTMLElement | null>(null);
+  const [drawingPanelHeight, setDrawingPanelHeight] = useState(0);
 
   useEffect(() => {
     window.mapaMalvinas
@@ -83,9 +86,33 @@ export function App() {
   const isEditMode = mode === "edit";
   const isViewMode = mode === "view";
   const isReadOnlyMode = isViewMode;
+  const activeDayIndex = days.findIndex((day) => day.id === activeDayId);
+  const activeDayNumber = activeDayIndex >= 0 ? activeDayIndex + 1 : 0;
   const previousActiveDayIdRef = useRef<number | null>(null);
   const transitionSourcePlacement = transitionEditing ? placementById.get(transitionEditing.sourcePlacementId) ?? null : null;
   const transitionTargetPlacement = transitionEditing ? placementById.get(transitionEditing.targetPlacementId) ?? null : null;
+  const featuredPlacement =
+    activeMapPlacements.find((placement) => placement.tituloContenido?.trim() || placement.textoDescriptivo?.trim()) ??
+    activeMapPlacements[0] ??
+    null;
+  const timelineItems = activeMapPlacements.slice(0, 3);
+
+  useLayoutEffect(() => {
+    const panel = drawingPanelRef.current;
+
+    if (!panel || !isDrawingPanelOpen) {
+      setDrawingPanelHeight(0);
+      return;
+    }
+
+    const updateHeight = () => setDrawingPanelHeight(panel.offsetHeight);
+    updateHeight();
+
+    const observer = new ResizeObserver(updateHeight);
+    observer.observe(panel);
+
+    return () => observer.disconnect();
+  }, [isDrawingPanelOpen, drawingTool, drawingLineStyle, activeDrawingLines.length]);
 
   useEffect(() => {
     setSelectedPlacement(null);
@@ -289,23 +316,11 @@ export function App() {
   }
 
   function handleToggleDrawingPanel() {
-    const nextIsOpen = !isDrawingPanelOpen;
-
-    setIsDrawingPanelOpen(nextIsOpen);
-
-    if (nextIsOpen) {
-      setIsIconsPanelOpen(false);
-    }
+    setIsDrawingPanelOpen((current) => !current);
   }
 
   function handleToggleIconsPanel() {
-    const nextIsOpen = !isIconsPanelOpen;
-
-    setIsIconsPanelOpen(nextIsOpen);
-
-    if (nextIsOpen) {
-      setIsDrawingPanelOpen(false);
-    }
+    setIsIconsPanelOpen((current) => !current);
   }
 
   async function handleDeleteIcon(iconId: number) {
@@ -368,6 +383,7 @@ export function App() {
 
   function handleOpenPlacementEditor(placement: MapIconPlacement) {
     setEditingPlacement(placement);
+    setContentPinKind(placement.pinKind ?? (isNavalPlacement(placement) ? "naval" : "land"));
     setContentType((placement.tipoContenido as "texto" | "imagen" | "video" | null) ?? "texto");
     setContentTitle(placement.tituloContenido ?? "");
     setContentText(placement.textoDescriptivo ?? "");
@@ -398,6 +414,7 @@ export function App() {
     try {
       const nextData = await window.mapaMalvinas.updateMapIconPlacementContent({
         placementId: editingPlacement.id,
+        pinKind: contentPinKind,
         tipoContenido: contentType,
         tituloContenido: contentTitle.trim() || null,
         textoDescriptivo: contentText || null,
@@ -734,25 +751,33 @@ export function App() {
   if (mode === "menu") {
     return (
       <main className="menu-shell">
+        <div className="menu-institutional">Memorial Heroes de Malvinas</div>
         <section className="menu-card">
-          <h1>Malvinas dia a dia</h1>
-          <p>Selecciona el modo con el que queres ingresar.</p>
+          <span className="menu-corner top-left" />
+          <span className="menu-corner top-right" />
+          <span className="menu-corner bottom-left" />
+          <span className="menu-corner bottom-right" />
+          <div className="menu-eyebrow">MUSEO MALVINAS &middot; AYAS</div>
+          <h1>Malvinas<br />Dia a Dia</h1>
+          <div className="menu-divider" />
+          <p>Selecciona el modo de ingreso</p>
 
           <div className="menu-actions">
-            <button className="menu-button" onClick={() => setMode("view")} type="button">
-              Modo visualizacion
+            <button className="menu-button primary" onClick={() => setMode("view")} type="button">
+              Modo Visualizacion
             </button>
-            <button className="menu-button" onClick={handleOpenEditPassword} type="button">
-              Modo edicion
+            <button className="menu-button secondary" onClick={handleOpenEditPassword} type="button">
+              Modo Edicion
             </button>
           </div>
         </section>
+        <div className="menu-location">Bariloche &middot; Argentina</div>
 
         {isEditPasswordOpen ? (
           <section className="password-gate-modal">
             <div className="password-gate-card">
               <div className="password-gate-top">
-                <strong>Acceso a edicion</strong>
+                <strong>Acceso a Edicion</strong>
                 <button className="password-gate-close" onClick={handleCloseEditPassword} type="button">
                   x
                 </button>
@@ -793,22 +818,6 @@ export function App() {
 
   return (
     <main className="experience-shell">
-      <button
-        className="mode-back-button"
-        onClick={() => {
-          setMode("menu");
-          setIsIconsPanelOpen(false);
-          setIsDrawingPanelOpen(false);
-          setIsDrawingEnabled(false);
-          setEditingPlacement(null);
-        }}
-        type="button"
-      >
-        Volver al menu
-      </button>
-
-      <div className="mode-badge">{isEditMode ? "Modo edicion" : "Modo visualizacion"}</div>
-
       <TopTimeline
         activeDayId={activeDayId}
         days={data?.days ?? []}
@@ -819,6 +828,35 @@ export function App() {
         onSelectDay={handleSelectDay}
         onUpdateDay={handleUpdateDay}
       />
+      <div className="topbar-actions">
+        {isEditMode ? (
+          <button
+            className="topbar-button ghost"
+            onClick={() => {
+              setMode("view");
+              setIsIconsPanelOpen(false);
+              setIsDrawingPanelOpen(false);
+              setIsDrawingEnabled(false);
+            }}
+            type="button"
+          >
+            Visualizacion
+          </button>
+        ) : null}
+        <button
+          className="topbar-button solid"
+          onClick={() => {
+            setMode("menu");
+            setIsIconsPanelOpen(false);
+            setIsDrawingPanelOpen(false);
+            setIsDrawingEnabled(false);
+            setEditingPlacement(null);
+          }}
+          type="button"
+        >
+          Menu
+        </button>
+      </div>
 
       <div className="map-scene-wrap">
         <MapCanvas
@@ -849,6 +887,64 @@ export function App() {
           transitionWaypointPointsPct={transitionEditing?.waypointPointsPct ?? []}
         />
       </div>
+
+      <section className="date-chip">
+        <span>{isEditMode ? `Modo Edicion - Dia ${activeDayNumber || "-"}` : `Dia ${activeDayNumber || "-"}`}</span>
+        <strong>{activeDay?.etiquetaFecha ?? "Sin dia activo"}</strong>
+      </section>
+
+      {isViewMode ? (
+        <aside className="event-info-stack">
+          <section className="event-info-panel">
+            <div className="event-eyebrow">Evento del dia</div>
+            <h2>{featuredPlacement?.tituloContenido?.trim() || featuredPlacement?.nombreIcono || activeDay?.etiquetaFecha || "Mapa historico"}</h2>
+            <p>
+              {featuredPlacement?.textoDescriptivo?.trim() ||
+                "Selecciona un punto del mapa para consultar el material historico asociado a esta jornada."}
+            </p>
+            <div className="event-divider" />
+            <footer>Fuente &middot; Archivo MMAAS</footer>
+          </section>
+
+          <section className="event-timeline-panel">
+            <header>Cronologia &middot; Dia {activeDayNumber || "-"}</header>
+            <div className="event-timeline-list">
+              {(timelineItems.length ? timelineItems : [featuredPlacement]).map((placement, index) =>
+                placement ? (
+                  <div key={placement.id} className="event-timeline-item">
+                    <span className={isNavalPlacement(placement) ? "timeline-dot naval" : "timeline-dot land"} />
+                    <div>
+                      <time>{["08:00 hs", "11:30 hs", "18:45 hs"][index] ?? "20:00 hs"}</time>
+                      <p>{placement.tituloContenido?.trim() || placement.nombreIcono || "Registro historico"}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div key="empty-timeline" className="event-timeline-item">
+                    <span className="timeline-dot land" />
+                    <div>
+                      <time>08:00 hs</time>
+                      <p>Sin registros cargados para este dia</p>
+                    </div>
+                  </div>
+                )
+              )}
+            </div>
+          </section>
+        </aside>
+      ) : null}
+
+      <div className="map-brand-badge">
+        <strong>Museo Malvinas</strong>
+        <span>Mapa historico &middot; 1982</span>
+      </div>
+
+      {isViewMode ? (
+        <div className="map-legend">
+          <strong>Leyenda</strong>
+          <span><i className="legend-avatar land" aria-hidden="true" /> Posicion terrestre / AR</span>
+          <span><i className="legend-avatar naval" aria-hidden="true" /> Posicion naval / UK</span>
+        </div>
+      ) : null}
 
       {isEditMode && editingPlacement ? (
         <section className="content-editor-modal">
@@ -881,6 +977,23 @@ export function App() {
                 type="button"
               >
                 Video
+              </button>
+            </div>
+
+            <div className="content-type-row pin-kind-row">
+              <button
+                className={contentPinKind === "land" ? "content-type-button active" : "content-type-button"}
+                onClick={() => setContentPinKind("land")}
+                type="button"
+              >
+                Terrestre / AR
+              </button>
+              <button
+                className={contentPinKind === "naval" ? "content-type-button active" : "content-type-button"}
+                onClick={() => setContentPinKind("naval")}
+                type="button"
+              >
+                Naval / UK
               </button>
             </div>
 
@@ -918,16 +1031,21 @@ export function App() {
       ) : null}
 
       {isEditMode && isIconsPanelOpen ? (
-        <aside className="icons-panel">
+        <aside
+          className="icons-panel"
+          style={{
+            top: isDrawingPanelOpen ? `${66 + drawingPanelHeight + 16}px` : "66px"
+          }}
+        >
           <div className="icons-panel-header">
-            <strong>Iconos</strong>
+            <strong>ICONOS</strong>
             <button className="icons-close" onClick={() => setIsIconsPanelOpen(false)} type="button">
               x
             </button>
           </div>
 
           <button className="icons-add-button" onClick={() => void handleAddIcon()} type="button">
-            Agregar icono
+            Agregar Icono
           </button>
 
           <div className="icons-list">
@@ -947,14 +1065,17 @@ export function App() {
                 </button>
               </div>
             ))}
+            <button className="icon-add-tile" onClick={() => void handleAddIcon()} type="button">
+              +
+            </button>
           </div>
         </aside>
       ) : null}
 
       {isEditMode && isDrawingPanelOpen ? (
-        <aside className="drawing-panel">
+        <aside ref={drawingPanelRef} className="drawing-panel">
           <div className="drawing-panel-header">
-            <strong>Dibujo</strong>
+            <strong>DIBUJO</strong>
             <button className="drawing-close" onClick={() => setIsDrawingPanelOpen(false)} type="button">
               x
             </button>
@@ -966,7 +1087,7 @@ export function App() {
               onClick={() => setDrawingTool("freehand")}
               type="button"
             >
-              <span className="drawing-style-preview freehand" />
+              <span className="drawing-style-symbol">---</span>
               Trazo libre
             </button>
             <button
@@ -974,7 +1095,7 @@ export function App() {
               onClick={() => setDrawingTool("straight")}
               type="button"
             >
-              <span className="drawing-style-preview solid" />
+              <span className="drawing-style-symbol">--</span>
               Punto A-B recta
             </button>
             <button
@@ -982,18 +1103,19 @@ export function App() {
               onClick={() => setDrawingTool("curve")}
               type="button"
             >
-              <span className="drawing-style-preview curve" />
+              <span className="drawing-style-symbol">&#8978;</span>
               Punto A-B curva
             </button>
           </div>
 
+          <div className="panel-section-label">Estilo de linea</div>
           <div className="drawing-style-list">
             <button
               className={drawingLineStyle === "solid" ? "drawing-style-button active" : "drawing-style-button"}
               onClick={() => setDrawingLineStyle("solid")}
               type="button"
             >
-              <span className="drawing-style-preview solid" />
+              <span className="drawing-style-symbol">--</span>
               Lisa
             </button>
             <button
@@ -1001,7 +1123,7 @@ export function App() {
               onClick={() => setDrawingLineStyle("dashed")}
               type="button"
             >
-              <span className="drawing-style-preview dashed" />
+              <span className="drawing-style-symbol">---</span>
               Punteada
             </button>
             <button
@@ -1009,13 +1131,10 @@ export function App() {
               onClick={() => setDrawingLineStyle("dotted")}
               type="button"
             >
-              <span className="drawing-style-preview dotted" />
+              <span className="drawing-style-symbol">...</span>
               Puntos
             </button>
           </div>
-
-          {drawingTool === "curve" ? <div className="drawing-hint">Curva: clic en A, clic en B y clic en C para curvar.</div> : null}
-          {drawingTool === "straight" ? <div className="drawing-hint">Recta: clic en A y clic en B.</div> : null}
 
           <button
             className={isDrawingEnabled ? "drawing-action-button active" : "drawing-action-button"}
@@ -1047,7 +1166,7 @@ export function App() {
 
           <div className="transition-summary">
             <span>{days.find((day) => day.id === transitionSourcePlacement.dayId)?.etiquetaFecha ?? "Dia actual"}</span>
-            <span className="transition-arrow">→</span>
+            <span className="transition-arrow">-&gt;</span>
             <span>{days.find((day) => day.id === transitionTargetPlacement.dayId)?.etiquetaFecha ?? "Dia siguiente"}</span>
           </div>
 
@@ -1078,21 +1197,21 @@ export function App() {
         <>
           <button
             aria-label="Abrir panel de dibujo"
-            className="drawing-toggle"
+            className={isDrawingPanelOpen ? "drawing-toggle active" : "drawing-toggle"}
             onClick={handleToggleDrawingPanel}
             title="Abrir panel de dibujo"
             type="button"
           >
-            <span className="drawing-toggle-icon" />
+            &#9998;
           </button>
           <button
             aria-label="Abrir panel de iconos"
-            className="icons-toggle"
+            className={isIconsPanelOpen ? "icons-toggle active" : "icons-toggle"}
             onClick={handleToggleIconsPanel}
             title="Abrir panel de iconos"
             type="button"
           >
-            +
+            &#9639;
           </button>
         </>
       ) : null}
@@ -1302,4 +1421,13 @@ function isAllowedResource(filePath: string, tipoContenido: MediaContentType) {
   const extension = getFileExtension(filePath);
   const allowedExtensions = tipoContenido === "imagen" ? IMAGE_EXTENSIONS : VIDEO_EXTENSIONS;
   return allowedExtensions.has(extension);
+}
+
+function isNavalPlacement(placement: MapIconPlacement) {
+  if (placement.pinKind) {
+    return placement.pinKind === "naval";
+  }
+
+  const text = `${placement.nombreIcono ?? ""} ${placement.tituloContenido ?? ""} ${placement.textoDescriptivo ?? ""}`.toLowerCase();
+  return ["ara", "naval", "buque", "barco", "crucero", "submarino", "fragata"].some((keyword) => text.includes(keyword));
 }
