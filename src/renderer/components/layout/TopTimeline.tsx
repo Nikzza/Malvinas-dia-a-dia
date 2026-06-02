@@ -29,6 +29,9 @@ export function TopTimeline({
   const [newDayLabel, setNewDayLabel] = useState("");
   const [editingDayId, setEditingDayId] = useState<number | null>(null);
   const [editingLabel, setEditingLabel] = useState("");
+  const activeDayIndex = days.findIndex((day) => day.id === activeDayId);
+  const hasPreviousDay = activeDayIndex > 0;
+  const hasNextDay = activeDayIndex >= 0 && activeDayIndex < days.length - 1;
 
   useEffect(() => {
     activeDayRef.current?.scrollIntoView({
@@ -94,12 +97,27 @@ export function TopTimeline({
     });
   }
 
+  function handleNavigate(direction: -1 | 1) {
+    if (!isEditable) {
+      const nextDay = days[activeDayIndex + direction];
+
+      if (nextDay) {
+        onSelectDay(nextDay.id);
+      }
+
+      return;
+    }
+
+    handleScrollTimeline(direction);
+  }
+
   return (
     <header className="timeline-shell">
       <button
         aria-label="Ver dias anteriores"
         className="timeline-nav-button"
-        onClick={() => handleScrollTimeline(-1)}
+        disabled={!isEditable && !hasPreviousDay}
+        onClick={() => handleNavigate(-1)}
         type="button"
       >
         &lsaquo;
@@ -233,7 +251,8 @@ export function TopTimeline({
       <button
         aria-label="Ver dias siguientes"
         className="timeline-nav-button"
-        onClick={() => handleScrollTimeline(1)}
+        disabled={!isEditable && !hasNextDay}
+        onClick={() => handleNavigate(1)}
         type="button"
       >
         &rsaquo;

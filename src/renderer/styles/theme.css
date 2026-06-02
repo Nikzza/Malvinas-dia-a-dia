@@ -47,6 +47,7 @@ textarea:focus-visible {
 }
 
 .menu-shell,
+.profile-shell,
 .experience-shell {
   position: relative;
   min-height: 100%;
@@ -55,6 +56,7 @@ textarea:focus-visible {
 }
 
 .menu-shell::before,
+.profile-shell::before,
 .experience-shell::before,
 .map-viewport::after {
   content: "";
@@ -223,6 +225,451 @@ textarea:focus-visible {
   font-size: 8px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
+}
+
+.profile-shell {
+  display: grid;
+  min-height: 100%;
+  place-items: center;
+  padding: 32px;
+  overflow: hidden;
+}
+
+.profile-picker {
+  position: relative;
+  z-index: 1;
+  width: min(680px, calc(100vw - 32px));
+  text-align: center;
+}
+
+.profile-picker.admin p {
+  margin: 0 0 6px;
+  color: rgba(129, 210, 247, 0.55);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+
+.profile-eyebrow,
+.password-gate-eyebrow {
+  margin-bottom: 12px;
+  color: var(--dorado);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+
+.profile-picker h1,
+.password-gate-card.restricted h2 {
+  margin: 0 0 6px;
+  color: var(--blanco-roto);
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.profile-divider,
+.password-gate-divider {
+  width: 36px;
+  height: 1px;
+  margin: 0 auto 32px;
+  background: var(--dorado);
+}
+
+.password-gate-divider {
+  width: 28px;
+  margin-bottom: 20px;
+}
+
+.profiles-grid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 24px;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.profile-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: 100px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: rgba(129, 210, 247, 0.70);
+  font-size: 12px;
+  letter-spacing: 0.10em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.profile-avatar,
+.add-profile-avatar {
+  display: flex;
+  width: 90px;
+  height: 90px;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  color: var(--celeste);
+  font-size: 28px;
+  font-weight: 700;
+  transition: border-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
+}
+
+.profile-avatar img,
+.active-profile-avatar img,
+.profile-edit-avatar-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.profile-card:hover {
+  color: var(--blanco-roto);
+}
+
+.profile-card:hover .profile-avatar,
+.profile-card:hover .add-profile-avatar {
+  border-color: var(--celeste);
+  transform: scale(1.06);
+}
+
+.add-profile-avatar {
+  border: 1.5px dashed rgba(129, 210, 247, 0.30);
+  background: rgba(22, 58, 97, 0.40);
+  color: rgba(129, 210, 247, 0.45);
+  font-size: 32px;
+}
+
+.add-profile-card:hover .add-profile-avatar {
+  color: var(--celeste);
+}
+
+.manage-profiles-button,
+.profile-back-button {
+  border: 0.5px solid rgba(129, 210, 247, 0.28);
+  border-radius: 7px;
+  background: transparent;
+  color: rgba(129, 210, 247, 0.55);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.manage-profiles-button {
+  margin-top: 36px;
+  padding: 9px 28px;
+}
+
+.profile-back-button {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  z-index: 2;
+  width: 36px;
+  height: 36px;
+}
+
+.manage-profiles-button:hover,
+.profile-back-button:hover {
+  border-color: var(--celeste);
+  color: var(--celeste);
+}
+
+.admin-avatar-wrap {
+  position: relative;
+  display: block;
+}
+
+.admin-avatar-wrap::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 10px;
+  background: rgba(13, 17, 23, 0.58);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.admin-edit-icon {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  color: var(--blanco-roto);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  opacity: 0;
+  text-transform: uppercase;
+  transition: opacity 0.2s ease;
+}
+
+.admin-card:hover .admin-avatar-wrap::after,
+.admin-card:hover .admin-edit-icon {
+  opacity: 1;
+}
+
+.profile-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(13, 17, 23, 0.66);
+}
+
+.profile-edit-card {
+  width: min(390px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  padding: 20px;
+  border: 0.5px solid var(--panel-border);
+  border-radius: 13px;
+  background: rgba(13, 26, 46, 0.97);
+}
+
+.profile-edit-avatar-preview {
+  display: grid;
+  width: 78px;
+  height: 78px;
+  margin: 0 auto 16px;
+  place-items: center;
+  overflow: hidden;
+  border: 1.5px solid var(--dorado);
+  border-radius: 50%;
+  color: var(--celeste);
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.profile-edit-avatar-preview span {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+}
+
+.profile-field,
+.password-field {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 12px;
+  color: rgba(129, 210, 247, 0.55);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.profile-field input,
+.password-field input {
+  width: 100%;
+  padding: 10px 14px;
+  border: 0.5px solid rgba(129, 210, 247, 0.28);
+  border-radius: 8px;
+  background: rgba(22, 58, 97, 0.35);
+  color: var(--blanco-roto);
+  font-size: 13px;
+  letter-spacing: 0.1em;
+}
+
+.profile-field input:focus,
+.password-field input:focus {
+  border-color: var(--celeste);
+  outline: none;
+}
+
+.profile-field-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.profile-file-button {
+  display: block;
+  width: 100%;
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  border: 0.5px solid rgba(129, 210, 247, 0.28);
+  border-radius: 8px;
+  background: transparent;
+  color: rgba(129, 210, 247, 0.70);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.profile-file-button input {
+  display: none;
+}
+
+.profile-color-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 2px 0 14px;
+  color: rgba(129, 210, 247, 0.55);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.profile-color-swatch {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 50%;
+}
+
+.profile-color-swatch.active {
+  border-color: var(--blanco-roto);
+}
+
+.profile-delete-button {
+  width: 100%;
+  margin-top: 8px;
+  padding: 12px 0;
+  border: 0.5px solid rgba(219, 80, 80, 0.70);
+  border-radius: 8px;
+  background: transparent;
+  color: rgba(219, 80, 80, 0.86);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.profile-topbar-left {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 23;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 390px;
+  height: 54px;
+  padding: 9px 14px;
+  border-bottom: 0.5px solid rgba(129, 210, 247, 0.13);
+  background: rgba(13, 26, 46, 0.94);
+}
+
+.profiles-return-button {
+  min-width: 108px;
+  height: 34px;
+  padding: 0 14px;
+  border: 0.5px solid rgba(129, 210, 247, 0.28);
+  border-radius: 8px;
+  background: transparent;
+  color: rgba(129, 210, 247, 0.70);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.profiles-return-button.map {
+  position: static;
+}
+
+.profiles-return-button:hover {
+  border-color: var(--celeste);
+  background: rgba(22, 58, 97, 0.28);
+  color: var(--celeste);
+}
+
+.menu-shell > .profiles-return-button {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  z-index: 2;
+}
+
+.active-profile-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 230px;
+  height: 34px;
+  padding: 3px 10px 3px 4px;
+  border: 0.5px solid rgba(129, 210, 247, 0.28);
+  border-radius: 8px;
+  background: transparent;
+  color: rgba(129, 210, 247, 0.70);
+  font-size: 10px;
+  letter-spacing: 0.10em;
+  cursor: default;
+  text-transform: uppercase;
+}
+
+.active-profile-chip span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.active-profile-avatar {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  place-items: center;
+  overflow: hidden;
+  border: 1.5px solid var(--dorado);
+  border-radius: 50%;
+  color: var(--celeste);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.password-gate-modal {
+  background: rgba(13, 26, 46, 0.92);
+}
+
+.password-gate-card.restricted {
+  position: relative;
+  width: 320px;
+  padding: 28px 32px;
+  border-radius: 13px;
+  background: rgba(13, 26, 46, 0.97);
+  text-align: center;
+}
+
+.password-gate-card.restricted h2 {
+  font-size: 18px;
+}
+
+.password-cancel-button {
+  margin-top: 8px;
+}
+
+@keyframes password-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-5px);
+  }
+  75% {
+    transform: translateX(5px);
+  }
+}
+
+.password-field input.shake {
+  animation: password-shake 0.22s ease;
 }
 
 .password-gate-modal,
@@ -408,13 +855,13 @@ textarea:focus-visible {
 .timeline-shell {
   position: absolute;
   top: 0;
-  left: 0;
+  left: 390px;
   z-index: 20;
   display: grid;
   grid-template-columns: 36px minmax(0, 1fr) 36px;
   align-items: center;
   gap: 9px;
-  width: calc(100vw - 210px);
+  width: calc(100vw - 600px);
   height: 54px;
   padding: 9px 14px;
   border-bottom: 0.5px solid rgba(129, 210, 247, 0.13);
@@ -474,6 +921,11 @@ textarea:focus-visible {
   background: rgba(22, 58, 97, 0.50);
   color: rgba(129, 210, 247, 0.70);
   font-size: 14px;
+}
+
+.timeline-nav-button:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
 }
 
 .timeline-box {
@@ -1418,8 +1870,24 @@ textarea:focus-visible {
   }
 
   .timeline-shell {
-    width: calc(100vw - 92px);
+    left: 114px;
+    width: calc(100vw - 206px);
     padding-left: 8px;
+  }
+
+  .profile-topbar-left {
+    width: 114px;
+    padding: 9px 8px;
+  }
+
+  .profiles-return-button.map {
+    min-width: 86px;
+    padding: 0 10px;
+    font-size: 10px;
+  }
+
+  .active-profile-chip {
+    display: none;
   }
 
   .topbar-actions {

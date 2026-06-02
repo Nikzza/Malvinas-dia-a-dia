@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { ChangeEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
+import type { ChangeEvent, FormEvent } from "react";
 import type { BootstrapData } from "../shared/types/ipc";
 import type { MapDrawingLine, MapDrawingLineStyle } from "../shared/types/mapDrawingLine";
 import type { DayIcon } from "../shared/types/dayIcon";
@@ -9,11 +9,17 @@ import type { MapDrawingTool } from "./components/layout/MapDrawingLayer";
 import { MapCanvas } from "./components/layout/MapCanvas";
 import { TopTimeline } from "./components/layout/TopTimeline";
 
-type AppMode = "menu" | "edit" | "view";
+type AppMode = "profiles" | "profile-admin" | "menu" | "edit" | "view";
 type MediaContentType = "imagen" | "video";
-const EDIT_PASSWORD = "1111";
+type PasswordGateMode = "verify" | "create" | "change";
 const TRANSITION_ANIMATION_MS = 1800;
 const DAY_LAYER_TRANSITION_MS = 900;
+const PROFILES_STORAGE_KEY = "malvinas_profiles";
+const ACTIVE_PROFILE_STORAGE_KEY = "malvinas_active_profile";
+const EDIT_PASSWORD_STORAGE_KEY = "malvinas_edit_password";
+const DEFAULT_PROFILE_COLOR = "#163A61";
+const PROFILE_BORDER_GOLD = "#DBB060";
+const PROFILE_BORDER_BLUE = "#81D2F7";
 
 type TransitionEditingState = {
   transitionId: number | null;
@@ -27,9 +33,168 @@ type DayLayerSnapshot = {
   placements: MapIconPlacement[];
 };
 
+type MalvinasProfile = {
+  id: string;
+  name: string;
+  avatar: string | null;
+  avatarInitials: string;
+  avatarColor: string;
+  createdAt: string;
+  mapState: {
+    startDay: number;
+    startCenter: [number, number];
+    startZoom: number;
+  };
+  icons: Array<{
+    id: string;
+    name: string;
+    imageUrl: string;
+    type: "terrestre" | "naval";
+    borderColor: string;
+  }>;
+  drawings: Record<string, unknown[]>;
+  mapPins: Record<string, unknown[]>;
+  drawingStyle: {
+    traceType: "trazo-libre" | "a-b-recta" | "a-b-curva";
+    lineStyle: "lisa" | "punteada" | "puntos";
+    color: string;
+  };
+};
+
+type ProfileFormState = {
+  name: string;
+  avatar: string | null;
+  avatarColor: string;
+  startDay: number;
+  startLng: string;
+  startLat: string;
+  startZoom: string;
+};
+
+function canUseLocalStorage() {
+  try {
+    const testKey = "__malvinas_storage_test__";
+    window.localStorage.setItem(testKey, "1");
+    window.localStorage.removeItem(testKey);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function createId(prefix: string) {
+  const randomId =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+  return `${prefix}-${randomId}`;
+}
+
+function getProfileInitials(name: string) {
+  const words = name
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  if (!words.length) {
+    return "VI";
+  }
+
+  return words
+    .slice(0, 2)
+    .map((word) => word[0])
+    .join("")
+    .toUpperCase();
+}
+
+function createDefaultProfile(name = "Visitante"): MalvinasProfile {
+  return {
+    id: createId("profile"),
+    name,
+    avatar: null,
+    avatarInitials: getProfileInitials(name),
+    avatarColor: DEFAULT_PROFILE_COLOR,
+    createdAt: new Date().toISOString(),
+    mapState: {
+      startDay: 1,
+      startCenter: [-59.5, -51.7],
+      startZoom: 6.25
+    },
+    icons: [],
+    drawings: {},
+    mapPins: {},
+    drawingStyle: {
+      traceType: "trazo-libre",
+      lineStyle: "lisa",
+      color: PROFILE_BORDER_GOLD
+    }
+  };
+}
+
+function getEmptyProfileForm(): ProfileFormState {
+  return {
+    name: "",
+    avatar: null,
+    avatarColor: PROFILE_BORDER_GOLD,
+    startDay: 1,
+    startLng: "-59.5",
+    startLat: "-51.7",
+    startZoom: "6.25"
+  };
+}
+
+function getProfileForm(profile: MalvinasProfile): ProfileFormState {
+  return {
+    name: profile.name,
+    avatar: profile.avatar,
+    avatarColor: profile.avatarColor,
+    startDay: profile.mapState.startDay,
+    startLng: String(profile.mapState.startCenter[0]),
+    startLat: String(profile.mapState.startCenter[1]),
+    startZoom: String(profile.mapState.startZoom)
+  };
+}
+
+function profileFromForm(form: ProfileFormState, existingProfile?: MalvinasProfile): MalvinasProfile {
+  const name = form.name.trim() || "Visitante";
+  const startLng = Number(form.startLng);
+  const startLat = Number(form.startLat);
+  const startZoom = Number(form.startZoom);
+
+  return {
+    ...(existingProfile ?? createDefaultProfile(name)),
+    name,
+    avatar: form.avatar,
+    avatarInitials: getProfileInitials(name),
+    avatarColor: form.avatarColor,
+    mapState: {
+      startDay: Math.min(Math.max(Number(form.startDay) || 1, 1), 9),
+      startCenter: [
+        Number.isFinite(startLng) ? startLng : -59.5,
+        Number.isFinite(startLat) ? startLat : -51.7
+      ],
+      startZoom: Number.isFinite(startZoom) ? startZoom : 6.25
+    }
+  };
+}
+
 export function App() {
   const [data, setData] = useState<BootstrapData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [profiles, setProfiles] = useState<MalvinasProfile[]>([]);
+  const [activeProfileId, setActiveProfileId] = useState<string | null>(null);
+  const [storageWarning, setStorageWarning] = useState<string | null>(null);
+  const [profileModalMode, setProfileModalMode] = useState<"create" | "edit" | null>(null);
+  const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
+  const [profileForm, setProfileForm] = useState<ProfileFormState>(() => getEmptyProfileForm());
+  const [profileFormError, setProfileFormError] = useState<string | null>(null);
+  const [passwordGateMode, setPasswordGateMode] = useState<PasswordGateMode | null>(null);
+  const [passwordValue, setPasswordValue] = useState("");
+  const [newPasswordValue, setNewPasswordValue] = useState("");
+  const [confirmPasswordValue, setConfirmPasswordValue] = useState("");
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [shouldShakePassword, setShouldShakePassword] = useState(false);
   const [activeDayId, setActiveDayId] = useState<number | null>(null);
   const [isSavingDay, setIsSavingDay] = useState(false);
   const [isIconsPanelOpen, setIsIconsPanelOpen] = useState(false);
@@ -44,18 +209,51 @@ export function App() {
   const [isDrawingEnabled, setIsDrawingEnabled] = useState(false);
   const [drawingLineStyle, setDrawingLineStyle] = useState<MapDrawingLineStyle>("solid");
   const [drawingTool, setDrawingTool] = useState<MapDrawingTool>("freehand");
-  const [mode, setMode] = useState<AppMode>("menu");
+  const [mode, setMode] = useState<AppMode>("profiles");
   const [selectedPlacement, setSelectedPlacement] = useState<MapIconPlacement | null>(null);
   const [transitionEditing, setTransitionEditing] = useState<TransitionEditingState | null>(null);
   const [animatedPlacementPositions, setAnimatedPlacementPositions] = useState<Record<number, { x: number; y: number }>>({});
-  const [isEditPasswordOpen, setIsEditPasswordOpen] = useState(false);
-  const [editPasswordDigits, setEditPasswordDigits] = useState(["", "", "", ""]);
-  const [passwordError, setPasswordError] = useState<string | null>(null);
   const [isDayTransitionRunning, setIsDayTransitionRunning] = useState(false);
   const [dayLayerSnapshot, setDayLayerSnapshot] = useState<DayLayerSnapshot | null>(null);
   const [dayLayerTransitionProgress, setDayLayerTransitionProgress] = useState(1);
   const drawingPanelRef = useRef<HTMLElement | null>(null);
   const [drawingPanelHeight, setDrawingPanelHeight] = useState(0);
+
+  useEffect(() => {
+    if (!canUseLocalStorage()) {
+      const defaultProfile = createDefaultProfile();
+      setProfiles([defaultProfile]);
+      setActiveProfileId(defaultProfile.id);
+      setStorageWarning("Activa el almacenamiento local para guardar los perfiles");
+      setMode("profiles");
+      return;
+    }
+
+    try {
+      const storedProfiles = window.localStorage.getItem(PROFILES_STORAGE_KEY);
+      const parsedProfiles = storedProfiles ? (JSON.parse(storedProfiles) as MalvinasProfile[]) : [];
+      const nextProfiles = Array.isArray(parsedProfiles) && parsedProfiles.length ? parsedProfiles : [createDefaultProfile()];
+      const storedActiveProfileId = window.localStorage.getItem(ACTIVE_PROFILE_STORAGE_KEY);
+      const nextActiveProfileId =
+        storedActiveProfileId && nextProfiles.some((profile) => profile.id === storedActiveProfileId)
+          ? storedActiveProfileId
+          : null;
+
+      if (!storedProfiles || !Array.isArray(parsedProfiles) || !parsedProfiles.length) {
+        window.localStorage.setItem(PROFILES_STORAGE_KEY, JSON.stringify(nextProfiles));
+      }
+
+      setProfiles(nextProfiles);
+      setActiveProfileId(nextActiveProfileId);
+      setMode(nextActiveProfileId ? "view" : "profiles");
+    } catch {
+      const defaultProfile = createDefaultProfile();
+      setProfiles([defaultProfile]);
+      setActiveProfileId(defaultProfile.id);
+      setStorageWarning("Activa el almacenamiento local para guardar los perfiles");
+      setMode("profiles");
+    }
+  }, []);
 
   useEffect(() => {
     window.mapaMalvinas
@@ -72,11 +270,14 @@ export function App() {
       return;
     }
 
-    setActiveDayId((current) => current ?? data.days[0].id);
-  }, [data]);
+    const activeProfile = profiles.find((profile) => profile.id === activeProfileId) ?? null;
+    const preferredDay = activeProfile ? data.days[activeProfile.mapState.startDay - 1] : null;
+    setActiveDayId((current) => current ?? preferredDay?.id ?? data.days[0].id);
+  }, [activeProfileId, data, profiles]);
 
   const activeDay = data?.days.find((day) => day.id === activeDayId) ?? null;
   const days = data?.days ?? [];
+  const activeProfile = profiles.find((profile) => profile.id === activeProfileId) ?? null;
   const iconsLibrary = Object.values(data?.iconsByDay ?? {}).flat();
   const activeDrawingLines = activeDayId ? data?.mapDrawingLinesByDay[activeDayId] ?? [] : [];
   const activeMapPlacements = activeDayId ? data?.mapPlacementsByDay[activeDayId] ?? [] : [];
@@ -144,6 +345,24 @@ export function App() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [selectedPlacement]);
+
+  useEffect(() => {
+    if (!profileModalMode && !passwordGateMode) {
+      return;
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Escape") {
+        return;
+      }
+
+      handleCloseProfileModal();
+      handleClosePasswordGate();
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [passwordGateMode, profileModalMode]);
 
   useEffect(() => {
     if (!transitionEditing) {
@@ -682,75 +901,519 @@ export function App() {
     setSelectedPlacement(placement);
   }
 
+  function persistProfiles(nextProfiles: MalvinasProfile[]) {
+    setProfiles(nextProfiles);
+
+    if (!canUseLocalStorage()) {
+      setStorageWarning("Activa el almacenamiento local para guardar los perfiles");
+      return;
+    }
+
+    window.localStorage.setItem(PROFILES_STORAGE_KEY, JSON.stringify(nextProfiles));
+  }
+
+  function persistActiveProfile(profileId: string | null) {
+    setActiveProfileId(profileId);
+
+    if (!canUseLocalStorage()) {
+      setStorageWarning("Activa el almacenamiento local para guardar los perfiles");
+      return;
+    }
+
+    if (profileId) {
+      window.localStorage.setItem(ACTIVE_PROFILE_STORAGE_KEY, profileId);
+      return;
+    }
+
+    window.localStorage.removeItem(ACTIVE_PROFILE_STORAGE_KEY);
+  }
+
+  function handleSelectProfile(profileId: string) {
+    const profile = profiles.find((item) => item.id === profileId);
+
+    if (!profile) {
+      return;
+    }
+
+    persistActiveProfile(profileId);
+    setMode("menu");
+    setActiveDayId(data?.days[profile.mapState.startDay - 1]?.id ?? data?.days[0]?.id ?? null);
+    setError(null);
+  }
+
+  function handleOpenCreateProfile() {
+    setProfileModalMode("create");
+    setEditingProfileId(null);
+    setProfileForm(getEmptyProfileForm());
+    setProfileFormError(null);
+  }
+
+  function handleOpenEditProfile(profile: MalvinasProfile) {
+    setProfileModalMode("edit");
+    setEditingProfileId(profile.id);
+    setProfileForm(getProfileForm(profile));
+    setProfileFormError(null);
+  }
+
+  function handleCloseProfileModal() {
+    setProfileModalMode(null);
+    setEditingProfileId(null);
+    setProfileForm(getEmptyProfileForm());
+    setProfileFormError(null);
+  }
+
+  function handleSaveProfile(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!profileForm.name.trim()) {
+      setProfileFormError("Ingresa un nombre para el perfil.");
+      return;
+    }
+
+    if (profileModalMode === "edit" && editingProfileId) {
+      const nextProfiles = profiles.map((profile) =>
+        profile.id === editingProfileId ? profileFromForm(profileForm, profile) : profile
+      );
+      persistProfiles(nextProfiles);
+      handleCloseProfileModal();
+      return;
+    }
+
+    const nextProfile = profileFromForm(profileForm);
+    const nextProfiles = [...profiles, nextProfile];
+    persistProfiles(nextProfiles);
+    persistActiveProfile(nextProfile.id);
+    handleCloseProfileModal();
+    setMode("menu");
+  }
+
+  function handleDeleteEditingProfile() {
+    if (!editingProfileId) {
+      return;
+    }
+
+    const confirmed = window.confirm("Eliminar este perfil? Se perderan todos sus trazados e iconos.");
+
+    if (!confirmed) {
+      return;
+    }
+
+    const remainingProfiles = profiles.filter((profile) => profile.id !== editingProfileId);
+    const nextProfiles = remainingProfiles.length ? remainingProfiles : [createDefaultProfile()];
+    const nextActiveProfileId =
+      activeProfileId && nextProfiles.some((profile) => profile.id === activeProfileId)
+        ? activeProfileId
+        : nextProfiles[0]?.id ?? null;
+
+    persistProfiles(nextProfiles);
+    persistActiveProfile(nextActiveProfileId);
+    handleCloseProfileModal();
+  }
+
+  function handleAvatarFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+      setProfileFormError("El avatar debe ser PNG, JPG o WebP.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setProfileForm((current) => ({
+        ...current,
+        avatar: typeof reader.result === "string" ? reader.result : current.avatar
+      }));
+      setProfileFormError(null);
+    };
+    reader.readAsDataURL(file);
+  }
+
   function handleOpenEditPassword() {
-    setIsEditPasswordOpen(true);
-    setEditPasswordDigits(["", "", "", ""]);
+    const hasPassword = Boolean(canUseLocalStorage() && window.localStorage.getItem(EDIT_PASSWORD_STORAGE_KEY));
+    setPasswordGateMode(hasPassword ? "verify" : "create");
+    setPasswordValue("");
+    setNewPasswordValue("");
+    setConfirmPasswordValue("");
     setPasswordError(null);
+    setShouldShakePassword(false);
   }
 
-  function handleCloseEditPassword() {
-    setIsEditPasswordOpen(false);
-    setEditPasswordDigits(["", "", "", ""]);
+  function handleOpenChangePassword() {
+    setPasswordGateMode("change");
+    setPasswordValue("");
+    setNewPasswordValue("");
+    setConfirmPasswordValue("");
     setPasswordError(null);
+    setShouldShakePassword(false);
   }
 
-  function handlePasswordDigitChange(index: number, event: ChangeEvent<HTMLInputElement>) {
-    const nextValue = event.target.value.replace(/\D/g, "").slice(-1);
-
-    setEditPasswordDigits((current) => {
-      const nextDigits = [...current];
-      nextDigits[index] = nextValue;
-      return nextDigits;
-    });
+  function handleClosePasswordGate() {
+    setPasswordGateMode(null);
+    setPasswordValue("");
+    setNewPasswordValue("");
+    setConfirmPasswordValue("");
     setPasswordError(null);
-
-    if (nextValue && index < 3) {
-      const nextInput = document.querySelector<HTMLInputElement>(`input[data-password-index="${index + 1}"]`);
-      nextInput?.focus();
-      nextInput?.select();
-    }
+    setShouldShakePassword(false);
   }
 
-  function handlePasswordDigitKeyDown(index: number, event: ReactKeyboardEvent<HTMLInputElement>) {
-    if (event.key === "Backspace" && !editPasswordDigits[index] && index > 0) {
-      const previousInput = document.querySelector<HTMLInputElement>(`input[data-password-index="${index - 1}"]`);
-      previousInput?.focus();
-      previousInput?.select();
+  function triggerPasswordError(message: string) {
+    setPasswordError(message);
+    setShouldShakePassword(false);
+    window.requestAnimationFrame(() => setShouldShakePassword(true));
+  }
+
+  function handleSubmitPasswordGate(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!canUseLocalStorage()) {
+      triggerPasswordError("Activa el almacenamiento local.");
       return;
     }
 
-    if (event.key === "ArrowLeft" && index > 0) {
-      const previousInput = document.querySelector<HTMLInputElement>(`input[data-password-index="${index - 1}"]`);
-      previousInput?.focus();
-      previousInput?.select();
+    const storedPassword = window.localStorage.getItem(EDIT_PASSWORD_STORAGE_KEY);
+
+    if (passwordGateMode === "verify") {
+      if (passwordValue === storedPassword) {
+        setMode("edit");
+        handleClosePasswordGate();
+        return;
+      }
+
+      triggerPasswordError("Contrasena incorrecta");
+      setPasswordValue("");
       return;
     }
 
-    if (event.key === "ArrowRight" && index < 3) {
-      const nextInput = document.querySelector<HTMLInputElement>(`input[data-password-index="${index + 1}"]`);
-      nextInput?.focus();
-      nextInput?.select();
-    }
-  }
+    if (passwordGateMode === "create") {
+      if (!newPasswordValue || newPasswordValue !== confirmPasswordValue) {
+        triggerPasswordError("Las contrasenas no coinciden");
+        return;
+      }
 
-  function handleSubmitEditPassword() {
-    const enteredPassword = editPasswordDigits.join("");
-
-    if (enteredPassword === EDIT_PASSWORD) {
+      window.localStorage.setItem(EDIT_PASSWORD_STORAGE_KEY, newPasswordValue);
       setMode("edit");
-      handleCloseEditPassword();
+      handleClosePasswordGate();
       return;
     }
 
-    setPasswordError("Contrasena incorrecta.");
-    setEditPasswordDigits(["", "", "", ""]);
-    const firstInput = document.querySelector<HTMLInputElement>('input[data-password-index="0"]');
-    firstInput?.focus();
+    if (passwordGateMode === "change") {
+      if (passwordValue !== storedPassword) {
+        triggerPasswordError("Contrasena incorrecta");
+        setPasswordValue("");
+        return;
+      }
+
+      if (!newPasswordValue || newPasswordValue !== confirmPasswordValue) {
+        triggerPasswordError("Las contrasenas no coinciden");
+        return;
+      }
+
+      window.localStorage.setItem(EDIT_PASSWORD_STORAGE_KEY, newPasswordValue);
+      handleClosePasswordGate();
+    }
+  }
+
+  function handleReturnToProfiles() {
+    setMode("profiles");
+    setIsIconsPanelOpen(false);
+    setIsDrawingPanelOpen(false);
+    setIsDrawingEnabled(false);
+    setEditingPlacement(null);
+    setSelectedPlacement(null);
+    setTransitionEditing(null);
+    handleClosePasswordGate();
+  }
+
+  function renderProfileAvatar(profile: MalvinasProfile, className = "profile-avatar") {
+    const shouldShowProfileBorder = className.includes("active-profile-avatar");
+
+    return (
+      <span
+        className={className}
+        style={{
+          backgroundColor: profile.avatar ? undefined : profile.avatarColor,
+          borderColor: shouldShowProfileBorder ? profile.avatarColor : undefined
+        }}
+      >
+        {profile.avatar ? <img alt={profile.name} src={profile.avatar} /> : profile.avatarInitials}
+      </span>
+    );
+  }
+
+  function renderProfileModal() {
+    if (!profileModalMode) {
+      return null;
+    }
+
+    const isEditing = profileModalMode === "edit";
+
+    return (
+      <section className="profile-modal-backdrop" onClick={handleCloseProfileModal}>
+        <form className="profile-edit-card" onClick={(event) => event.stopPropagation()} onSubmit={handleSaveProfile}>
+          <div className="content-editor-header">
+            <strong>{isEditing ? "Editar perfil" : "Crear perfil"}</strong>
+            <button className="content-editor-close" onClick={handleCloseProfileModal} type="button">
+              x
+            </button>
+          </div>
+
+          <div className="profile-edit-avatar-preview">
+            {profileForm.avatar ? (
+              <img alt="Avatar seleccionado" src={profileForm.avatar} />
+            ) : (
+              <span style={{ backgroundColor: DEFAULT_PROFILE_COLOR }}>{getProfileInitials(profileForm.name)}</span>
+            )}
+          </div>
+
+          <label className="profile-field">
+            <span>Nombre del perfil</span>
+            <input
+              onChange={(event) => setProfileForm((current) => ({ ...current, name: event.target.value }))}
+              placeholder="Nombre del perfil"
+              type="text"
+              value={profileForm.name}
+            />
+          </label>
+
+          <label className="profile-file-button">
+            Cambiar foto
+            <input accept="image/png,image/jpeg,image/webp" onChange={handleAvatarFileChange} type="file" />
+          </label>
+
+          <label className="profile-field">
+            <span>Dia de inicio</span>
+            <input
+              max={9}
+              min={1}
+              onChange={(event) =>
+                setProfileForm((current) => ({ ...current, startDay: Number(event.target.value) || 1 }))
+              }
+              type="number"
+              value={profileForm.startDay}
+            />
+          </label>
+
+          <div className="profile-field-grid">
+            <label className="profile-field">
+              <span>Longitud</span>
+              <input
+                onChange={(event) => setProfileForm((current) => ({ ...current, startLng: event.target.value }))}
+                type="number"
+                value={profileForm.startLng}
+              />
+            </label>
+            <label className="profile-field">
+              <span>Latitud</span>
+              <input
+                onChange={(event) => setProfileForm((current) => ({ ...current, startLat: event.target.value }))}
+                type="number"
+                value={profileForm.startLat}
+              />
+            </label>
+          </div>
+
+          <label className="profile-field">
+            <span>Zoom inicial</span>
+            <input
+              onChange={(event) => setProfileForm((current) => ({ ...current, startZoom: event.target.value }))}
+              step="0.1"
+              type="number"
+              value={profileForm.startZoom}
+            />
+          </label>
+
+          <div className="profile-color-row">
+            <span>Color de borde</span>
+            {[PROFILE_BORDER_GOLD, PROFILE_BORDER_BLUE].map((color) => (
+              <button
+                key={color}
+                aria-label={`Usar color ${color}`}
+                className={profileForm.avatarColor === color ? "profile-color-swatch active" : "profile-color-swatch"}
+                onClick={() => setProfileForm((current) => ({ ...current, avatarColor: color }))}
+                style={{ backgroundColor: color }}
+                type="button"
+              />
+            ))}
+          </div>
+
+          {profileFormError ? <div className="password-gate-error">{profileFormError}</div> : null}
+
+          <button className="content-save-button" type="submit">
+            {isEditing ? "Guardar cambios" : "Crear perfil"}
+          </button>
+
+          {isEditing ? (
+            <button className="profile-delete-button" onClick={handleDeleteEditingProfile} type="button">
+              Eliminar perfil
+            </button>
+          ) : null}
+        </form>
+      </section>
+    );
+  }
+
+  function renderPasswordGate() {
+    if (!passwordGateMode) {
+      return null;
+    }
+
+    const isCreate = passwordGateMode === "create";
+    const isChange = passwordGateMode === "change";
+
+    return (
+      <section className="password-gate-modal" onClick={handleClosePasswordGate}>
+        <form className="password-gate-card restricted" onClick={(event) => event.stopPropagation()} onSubmit={handleSubmitPasswordGate}>
+          <span className="menu-corner top-left" />
+          <span className="menu-corner top-right" />
+          <span className="menu-corner bottom-left" />
+          <span className="menu-corner bottom-right" />
+          <div className="password-gate-eyebrow">Acceso restringido</div>
+          <h2>{isChange ? "Cambiar contrasena" : "Modo Edicion"}</h2>
+          <div className="password-gate-divider" />
+
+          {!isCreate ? (
+            <label className="password-field">
+              <span>{isChange ? "Contrasena actual" : "Contrasena"}</span>
+              <input
+                autoFocus
+                className={shouldShakePassword ? "shake" : ""}
+                onChange={(event) => {
+                  setPasswordValue(event.target.value);
+                  setPasswordError(null);
+                }}
+                type="password"
+                value={passwordValue}
+              />
+            </label>
+          ) : null}
+
+          {isCreate || isChange ? (
+            <>
+              <label className="password-field">
+                <span>{isCreate ? "Nueva contrasena" : "Nueva"}</span>
+                <input
+                  autoFocus={isCreate}
+                  onChange={(event) => {
+                    setNewPasswordValue(event.target.value);
+                    setPasswordError(null);
+                  }}
+                  type="password"
+                  value={newPasswordValue}
+                />
+              </label>
+              <label className="password-field">
+                <span>{isCreate ? "Confirmar" : "Confirmar nueva"}</span>
+                <input
+                  onChange={(event) => {
+                    setConfirmPasswordValue(event.target.value);
+                    setPasswordError(null);
+                  }}
+                  type="password"
+                  value={confirmPasswordValue}
+                />
+              </label>
+            </>
+          ) : null}
+
+          {passwordError ? <div className="password-gate-error">{passwordError}</div> : null}
+
+          <button className="password-gate-button" type="submit">
+            {isCreate ? "Crear contrasena" : isChange ? "Cambiar contrasena" : "Ingresar"}
+          </button>
+          <button className="content-resource-button password-cancel-button" onClick={handleClosePasswordGate} type="button">
+            Cancelar
+          </button>
+        </form>
+      </section>
+    );
+  }
+
+  if (mode === "profiles") {
+    return (
+      <main className="profile-shell">
+        <section className="profile-picker">
+          <div className="profile-eyebrow">MUSEO MALVINAS &middot; AYAS</div>
+          <h1>Seleccione perfil</h1>
+          <div className="profile-divider" />
+
+          <div className="profiles-grid">
+            {profiles.map((profile) => (
+              <button className="profile-card" key={profile.id} onClick={() => handleSelectProfile(profile.id)} type="button">
+                {renderProfileAvatar(profile)}
+                <span>{profile.name}</span>
+              </button>
+            ))}
+
+            <button className="profile-card add-profile-card" onClick={handleOpenCreateProfile} type="button">
+              <span className="add-profile-avatar">+</span>
+              <span>Agregar perfil</span>
+            </button>
+          </div>
+
+          <button className="manage-profiles-button" onClick={() => setMode("profile-admin")} type="button">
+            Administrar perfiles
+          </button>
+        </section>
+
+        {storageWarning ? <div className="error-toast">{storageWarning}</div> : null}
+        {renderProfileModal()}
+      </main>
+    );
+  }
+
+  if (mode === "profile-admin") {
+    return (
+      <main className="profile-shell">
+        <button className="profile-back-button" onClick={() => setMode("profiles")} type="button">
+          &lt;
+        </button>
+
+        <section className="profile-picker admin">
+          <div className="profile-eyebrow">MUSEO MALVINAS &middot; AYAS</div>
+          <h1>Administrar perfiles</h1>
+          <p>Selecciona un perfil para editarlo</p>
+          <div className="profile-divider" />
+
+          <div className="profiles-grid">
+            {profiles.map((profile) => (
+              <button className="profile-card admin-card" key={profile.id} onClick={() => handleOpenEditProfile(profile)} type="button">
+                <span className="admin-avatar-wrap">
+                  {renderProfileAvatar(profile)}
+                  <span className="admin-edit-icon">Editar</span>
+                </span>
+                <span>{profile.name}</span>
+              </button>
+            ))}
+
+            <button className="profile-card add-profile-card" onClick={handleOpenCreateProfile} type="button">
+              <span className="add-profile-avatar">+</span>
+              <span>Agregar perfil</span>
+            </button>
+          </div>
+
+          <button className="manage-profiles-button" onClick={handleOpenChangePassword} type="button">
+            Cambiar contrasena de edicion
+          </button>
+        </section>
+
+        {storageWarning ? <div className="error-toast">{storageWarning}</div> : null}
+        {renderProfileModal()}
+        {renderPasswordGate()}
+      </main>
+    );
   }
 
   if (mode === "menu") {
     return (
       <main className="menu-shell">
+        <button className="profiles-return-button" onClick={handleReturnToProfiles} type="button">
+          Perfiles
+        </button>
         <div className="menu-institutional">Memorial Heroes de Malvinas</div>
         <section className="menu-card">
           <span className="menu-corner top-left" />
@@ -760,7 +1423,7 @@ export function App() {
           <div className="menu-eyebrow">MUSEO MALVINAS &middot; AYAS</div>
           <h1>Malvinas<br />Dia a Dia</h1>
           <div className="menu-divider" />
-          <p>Selecciona el modo de ingreso</p>
+          <p>{activeProfile ? `Perfil activo: ${activeProfile.name}` : "Selecciona el modo de ingreso"}</p>
 
           <div className="menu-actions">
             <button className="menu-button primary" onClick={() => setMode("view")} type="button">
@@ -773,43 +1436,7 @@ export function App() {
         </section>
         <div className="menu-location">Bariloche &middot; Argentina</div>
 
-        {isEditPasswordOpen ? (
-          <section className="password-gate-modal">
-            <div className="password-gate-card">
-              <div className="password-gate-top">
-                <strong>Acceso a Edicion</strong>
-                <button className="password-gate-close" onClick={handleCloseEditPassword} type="button">
-                  x
-                </button>
-              </div>
-
-              <p className="password-gate-text">Ingresa la contrasena de 4 digitos para entrar al modo edicion.</p>
-
-              <div className="password-gate-inputs">
-                {editPasswordDigits.map((digit, index) => (
-                  <input
-                    key={index}
-                    autoFocus={index === 0}
-                    className="password-gate-input"
-                    data-password-index={index}
-                    inputMode="numeric"
-                    maxLength={1}
-                    onChange={(event) => handlePasswordDigitChange(index, event)}
-                    onKeyDown={(event) => handlePasswordDigitKeyDown(index, event)}
-                    type="password"
-                    value={digit}
-                  />
-                ))}
-              </div>
-
-              {passwordError ? <div className="password-gate-error">{passwordError}</div> : null}
-
-              <button className="password-gate-button" onClick={handleSubmitEditPassword} type="button">
-                Ingresar
-              </button>
-            </div>
-          </section>
-        ) : null}
+        {renderPasswordGate()}
 
         {error ? <div className="error-toast">{error}</div> : null}
       </main>
@@ -818,6 +1445,22 @@ export function App() {
 
   return (
     <main className="experience-shell">
+      <div className="profile-topbar-left">
+        <button className="profiles-return-button map" onClick={handleReturnToProfiles} type="button">
+          Perfiles
+        </button>
+
+        {activeProfile ? (
+          <div
+            aria-label={`Perfil activo: ${activeProfile.name}`}
+            className="active-profile-chip"
+          >
+            {renderProfileAvatar(activeProfile, "active-profile-avatar")}
+            <span>{activeProfile.name}</span>
+          </div>
+        ) : null}
+      </div>
+
       <TopTimeline
         activeDayId={activeDayId}
         days={data?.days ?? []}

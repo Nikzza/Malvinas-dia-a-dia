@@ -48,6 +48,8 @@ type ScreenPoint = {
 
 const MAX_MERCATOR_LATITUDE = 85.05112878;
 const MALVINAS_CENTER: [number, number] = [-59.5236, -51.7963];
+const MAP_TILE_SIZE = 256;
+const MAP_MIN_ZOOM_PADDING = 0.02;
 const MAPLIBRE_STYLE: StyleSpecification = {
   version: 8,
   sources: {
@@ -67,6 +69,14 @@ const MAPLIBRE_STYLE: StyleSpecification = {
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
+}
+
+function getMinimumZoomForViewport(width: number) {
+  if (!width) {
+    return 0;
+  }
+
+  return Math.max(0, Math.log2(width / MAP_TILE_SIZE) + MAP_MIN_ZOOM_PADDING);
 }
 
 function normalizeLongitude(lng: number) {
@@ -215,6 +225,8 @@ export function MapCanvas({
       style: MAPLIBRE_STYLE,
       center: MALVINAS_CENTER,
       zoom: 6.25,
+      minZoom: getMinimumZoomForViewport(container.clientWidth),
+      renderWorldCopies: false,
       attributionControl: false,
       dragRotate: false,
       touchPitch: false
@@ -239,7 +251,20 @@ export function MapCanvas({
 
   useEffect(() => {
     const animationFrame = window.requestAnimationFrame(() => {
-      mapInstanceRef.current?.resize();
+      const currentMap = mapInstanceRef.current;
+
+      if (!currentMap) {
+        return;
+      }
+
+      const nextMinZoom = getMinimumZoomForViewport(viewportSize.width);
+      currentMap.setMinZoom(nextMinZoom);
+
+      if (currentMap.getZoom() < nextMinZoom) {
+        currentMap.zoomTo(nextMinZoom, { duration: 0 });
+      }
+
+      currentMap.resize();
       setMapViewVersion((current) => current + 1);
     });
 
