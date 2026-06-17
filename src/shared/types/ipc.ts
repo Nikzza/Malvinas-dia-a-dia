@@ -23,11 +23,13 @@ export type BootstrapData = {
 
 export type CreateDayPayload = {
   etiquetaFecha: string;
+  esEventoDestacado: boolean;
 };
 
 export type UpdateDayPayload = {
   id: number;
   etiquetaFecha: string;
+  esEventoDestacado: boolean;
 };
 
 export type CreateDayIconPayload = {

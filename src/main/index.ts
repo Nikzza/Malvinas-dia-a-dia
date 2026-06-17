@@ -221,7 +221,7 @@ function registerIpcHandlers() {
       throw new Error("El nombre del dia no puede estar vacio.");
     }
 
-    dayRepository.create(etiquetaFecha);
+    dayRepository.create(etiquetaFecha, Boolean(payload.esEventoDestacado));
     return getBootstrapData();
   });
   ipcMain.handle("days:delete", async (_event, dayId: number) => {
@@ -235,7 +235,7 @@ function registerIpcHandlers() {
       throw new Error("El nombre del dia no puede estar vacio.");
     }
 
-    dayRepository.update(payload.id, etiquetaFecha);
+    dayRepository.update(payload.id, etiquetaFecha, Boolean(payload.esEventoDestacado));
     return getBootstrapData();
   });
   ipcMain.handle("icons:select-png", async () => {

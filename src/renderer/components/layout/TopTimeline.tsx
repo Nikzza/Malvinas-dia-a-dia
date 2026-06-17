@@ -7,9 +7,9 @@ type TopTimelineProps = {
   activeDayId: number | null;
   isEditable: boolean;
   onSelectDay: (dayId: number) => void;
-  onAddDay: (label: string) => Promise<void>;
+  onAddDay: (label: string, esEventoDestacado: boolean) => Promise<void>;
   onDeleteDay: (dayId: number) => Promise<void>;
-  onUpdateDay: (dayId: number, label: string) => Promise<void>;
+  onUpdateDay: (dayId: number, label: string, esEventoDestacado: boolean) => Promise<void>;
   isSavingDay: boolean;
 };
 
@@ -27,8 +27,10 @@ export function TopTimeline({
   const activeDayRef = useRef<HTMLDivElement | null>(null);
   const [isAdding, setIsAdding] = useState(false);
   const [newDayLabel, setNewDayLabel] = useState("");
+  const [newDayIsFeatured, setNewDayIsFeatured] = useState(false);
   const [editingDayId, setEditingDayId] = useState<number | null>(null);
   const [editingLabel, setEditingLabel] = useState("");
+  const [editingIsFeatured, setEditingIsFeatured] = useState(false);
   const activeDayIndex = days.findIndex((day) => day.id === activeDayId);
   const hasPreviousDay = activeDayIndex > 0;
   const hasNextDay = activeDayIndex >= 0 && activeDayIndex < days.length - 1;
@@ -48,8 +50,9 @@ export function TopTimeline({
       return;
     }
 
-    await onAddDay(trimmedLabel);
+    await onAddDay(trimmedLabel, newDayIsFeatured);
     setNewDayLabel("");
+    setNewDayIsFeatured(false);
     setIsAdding(false);
   }
 
@@ -60,9 +63,10 @@ export function TopTimeline({
       return;
     }
 
-    await onUpdateDay(editingDayId, trimmedLabel);
+    await onUpdateDay(editingDayId, trimmedLabel, editingIsFeatured);
     setEditingDayId(null);
     setEditingLabel("");
+    setEditingIsFeatured(false);
   }
 
   function handleTimelineWheel(event: ReactWheelEvent<HTMLDivElement>) {
@@ -141,11 +145,22 @@ export function TopTimeline({
                     if (event.key === "Escape") {
                       setEditingDayId(null);
                       setEditingLabel("");
+                      setEditingIsFeatured(false);
                     }
                   }}
                   type="text"
                   value={editingLabel}
                 />
+                <button
+                  aria-label={editingIsFeatured ? "Quitar de eventos destacados" : "Agregar a eventos destacados"}
+                  className={editingIsFeatured ? "timeline-favorite-toggle active" : "timeline-favorite-toggle"}
+                  onClick={() => setEditingIsFeatured((current) => !current)}
+                  type="button"
+                >
+                  <span className="timeline-favorite-icon" aria-hidden="true">
+                    &#9733;
+                  </span>
+                </button>
               </div>
               <div className="timeline-edit-actions">
                 <button className="timeline-mini-button" onClick={() => void handleUpdateSubmit()} type="button">
@@ -156,6 +171,7 @@ export function TopTimeline({
                   onClick={() => {
                     setEditingDayId(null);
                     setEditingLabel("");
+                    setEditingIsFeatured(false);
                   }}
                   type="button"
                 >
@@ -177,6 +193,7 @@ export function TopTimeline({
                     ? () => {
                         setEditingDayId(day.id);
                         setEditingLabel(day.etiquetaFecha);
+                        setEditingIsFeatured(day.esEventoDestacado);
                       }
                     : undefined
                 }
@@ -186,6 +203,23 @@ export function TopTimeline({
                   {day.etiquetaFecha}
                 </span>
               </button>
+
+              {isEditable ? (
+                <button
+                  aria-label={day.esEventoDestacado ? `Quitar ${day.etiquetaFecha} de eventos` : `Destacar ${day.etiquetaFecha} como evento`}
+                  className={day.esEventoDestacado ? "timeline-feature-button active" : "timeline-feature-button"}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    void onUpdateDay(day.id, day.etiquetaFecha, !day.esEventoDestacado);
+                  }}
+                  type="button"
+                >
+                  <span className="timeline-favorite-icon" aria-hidden="true">
+                    &#9733;
+                  </span>
+                </button>
+              ) : null}
+
               {isEditable ? (
                 <button
                   aria-label={`Borrar ${day.etiquetaFecha}`}
@@ -216,12 +250,23 @@ export function TopTimeline({
                   if (event.key === "Escape") {
                     setIsAdding(false);
                     setNewDayLabel("");
+                    setNewDayIsFeatured(false);
                   }
                 }}
                 placeholder="Escribir nombre"
                 type="text"
                 value={newDayLabel}
               />
+              <button
+                aria-label={newDayIsFeatured ? "Quitar de eventos destacados" : "Agregar a eventos destacados"}
+                className={newDayIsFeatured ? "timeline-favorite-toggle active" : "timeline-favorite-toggle"}
+                onClick={() => setNewDayIsFeatured((current) => !current)}
+                type="button"
+              >
+                <span className="timeline-favorite-icon" aria-hidden="true">
+                  &#9733;
+                </span>
+              </button>
             </div>
 
             <div className="timeline-edit-actions">
@@ -233,6 +278,7 @@ export function TopTimeline({
                 onClick={() => {
                   setIsAdding(false);
                   setNewDayLabel("");
+                  setNewDayIsFeatured(false);
                 }}
                 type="button"
               >

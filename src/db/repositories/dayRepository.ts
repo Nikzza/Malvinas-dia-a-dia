@@ -4,6 +4,7 @@ import type { Day } from "../../shared/types/day";
 type DayRow = {
   id: number;
   etiqueta_fecha: string;
+  es_evento_destacado: number;
   ruta_imagen_fondo: string | null;
   orden: number;
   created_at: string;
@@ -16,7 +17,7 @@ export const dayRepository = {
     const rows = db
       .prepare(
         `
-          SELECT id, etiqueta_fecha, ruta_imagen_fondo, orden, created_at, updated_at
+          SELECT id, etiqueta_fecha, es_evento_destacado, ruta_imagen_fondo, orden, created_at, updated_at
           FROM dias
           ORDER BY orden ASC, id ASC
         `
@@ -26,13 +27,14 @@ export const dayRepository = {
     return rows.map((row) => ({
       id: row.id,
       etiquetaFecha: row.etiqueta_fecha,
+      esEventoDestacado: Boolean(row.es_evento_destacado),
       rutaImagenFondo: row.ruta_imagen_fondo,
       orden: row.orden,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     }));
   },
-  create: (etiquetaFecha: string): Day => {
+  create: (etiquetaFecha: string, esEventoDestacado: boolean): Day => {
     const db = getDatabase();
     const maxOrderRow = db.prepare("SELECT COALESCE(MAX(orden), 0) AS maxOrden FROM dias").get() as {
       maxOrden: number;
@@ -41,16 +43,16 @@ export const dayRepository = {
     const insertResult = db
       .prepare(
         `
-          INSERT INTO dias (etiqueta_fecha, ruta_imagen_fondo, orden)
-          VALUES (?, ?, ?)
+          INSERT INTO dias (etiqueta_fecha, es_evento_destacado, ruta_imagen_fondo, orden)
+          VALUES (?, ?, ?, ?)
         `
       )
-      .run(etiquetaFecha.trim(), null, maxOrderRow.maxOrden + 1);
+      .run(etiquetaFecha.trim(), esEventoDestacado ? 1 : 0, null, maxOrderRow.maxOrden + 1);
 
     const created = db
       .prepare(
         `
-          SELECT id, etiqueta_fecha, ruta_imagen_fondo, orden, created_at, updated_at
+          SELECT id, etiqueta_fecha, es_evento_destacado, ruta_imagen_fondo, orden, created_at, updated_at
           FROM dias
           WHERE id = ?
         `
@@ -60,6 +62,7 @@ export const dayRepository = {
     return {
       id: created.id,
       etiquetaFecha: created.etiqueta_fecha,
+      esEventoDestacado: Boolean(created.es_evento_destacado),
       rutaImagenFondo: created.ruta_imagen_fondo,
       orden: created.orden,
       createdAt: created.created_at,
@@ -85,14 +88,14 @@ export const dayRepository = {
     db.prepare("DELETE FROM eventos WHERE id_dia = ?").run(id);
     db.prepare("DELETE FROM dias WHERE id = ?").run(id);
   },
-  update: (id: number, etiquetaFecha: string): void => {
+  update: (id: number, etiquetaFecha: string, esEventoDestacado: boolean): void => {
     const db = getDatabase();
     db.prepare(
       `
         UPDATE dias
-        SET etiqueta_fecha = ?, ruta_imagen_fondo = NULL, updated_at = CURRENT_TIMESTAMP
+        SET etiqueta_fecha = ?, es_evento_destacado = ?, ruta_imagen_fondo = NULL, updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
       `
-    ).run(etiquetaFecha.trim(), id);
+    ).run(etiquetaFecha.trim(), esEventoDestacado ? 1 : 0, id);
   }
 };
