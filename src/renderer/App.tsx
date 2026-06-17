@@ -5,6 +5,7 @@ import type { MapDrawingLine, MapDrawingLineStyle } from "../shared/types/mapDra
 import type { DayIcon } from "../shared/types/dayIcon";
 import type { MapIconPlacement, MapPinKind } from "../shared/types/mapIconPlacement";
 import type { MapIconTransition } from "../shared/types/mapIconTransition";
+import { EventDrawer } from "./components/layout/EventDrawer";
 import type { MapDrawingTool } from "./components/layout/MapDrawingLayer";
 import { MapCanvas } from "./components/layout/MapCanvas";
 import { TopTimeline } from "./components/layout/TopTimeline";
@@ -292,11 +293,6 @@ export function App() {
   const previousActiveDayIdRef = useRef<number | null>(null);
   const transitionSourcePlacement = transitionEditing ? placementById.get(transitionEditing.sourcePlacementId) ?? null : null;
   const transitionTargetPlacement = transitionEditing ? placementById.get(transitionEditing.targetPlacementId) ?? null : null;
-  const featuredPlacement =
-    activeMapPlacements.find((placement) => placement.tituloContenido?.trim() || placement.textoDescriptivo?.trim()) ??
-    activeMapPlacements[0] ??
-    null;
-  const timelineItems = activeMapPlacements.slice(0, 3);
 
   useLayoutEffect(() => {
     const panel = drawingPanelRef.current;
@@ -448,13 +444,14 @@ export function App() {
     };
   }, [activeDayId, days, mode, placementById, transitions]);
 
-  async function handleCreateDay(label: string) {
+  async function handleCreateDay(label: string, esEventoDestacado: boolean) {
     setIsSavingDay(true);
     setError(null);
 
     try {
       const nextData = await window.mapaMalvinas.createDay({
-        etiquetaFecha: label
+        etiquetaFecha: label,
+        esEventoDestacado
       });
       setData(nextData);
       setActiveDayId(nextData.days[nextData.days.length - 1]?.id ?? null);
@@ -466,8 +463,8 @@ export function App() {
     }
   }
 
-  async function handleAddDay(label: string) {
-    await handleCreateDay(label);
+  async function handleAddDay(label: string, esEventoDestacado: boolean) {
+    await handleCreateDay(label, esEventoDestacado);
   }
 
   async function handleDeleteDay(dayId: number) {
@@ -489,13 +486,14 @@ export function App() {
     }
   }
 
-  async function handleUpdateDay(dayId: number, label: string) {
+  async function handleUpdateDay(dayId: number, label: string, esEventoDestacado: boolean) {
     setError(null);
 
     try {
       const nextData = await window.mapaMalvinas.updateDay({
         id: dayId,
-        etiquetaFecha: label
+        etiquetaFecha: label,
+        esEventoDestacado
       });
       setData(nextData);
     } catch (cause: unknown) {
@@ -1471,6 +1469,12 @@ export function App() {
         onSelectDay={handleSelectDay}
         onUpdateDay={handleUpdateDay}
       />
+      <EventDrawer
+        activeDayId={activeDayId}
+        days={data?.days ?? []}
+        isEditable={isEditMode}
+        onSelectDay={handleSelectDay}
+      />
       <div className="topbar-actions">
         {isEditMode ? (
           <button
@@ -1536,58 +1540,10 @@ export function App() {
         <strong>{activeDay?.etiquetaFecha ?? "Sin dia activo"}</strong>
       </section>
 
-      {isViewMode ? (
-        <aside className="event-info-stack">
-          <section className="event-info-panel">
-            <div className="event-eyebrow">Evento del dia</div>
-            <h2>{featuredPlacement?.tituloContenido?.trim() || featuredPlacement?.nombreIcono || activeDay?.etiquetaFecha || "Mapa historico"}</h2>
-            <p>
-              {featuredPlacement?.textoDescriptivo?.trim() ||
-                "Selecciona un punto del mapa para consultar el material historico asociado a esta jornada."}
-            </p>
-            <div className="event-divider" />
-            <footer>Fuente &middot; Archivo MMAAS</footer>
-          </section>
-
-          <section className="event-timeline-panel">
-            <header>Cronologia &middot; Dia {activeDayNumber || "-"}</header>
-            <div className="event-timeline-list">
-              {(timelineItems.length ? timelineItems : [featuredPlacement]).map((placement, index) =>
-                placement ? (
-                  <div key={placement.id} className="event-timeline-item">
-                    <span className={isNavalPlacement(placement) ? "timeline-dot naval" : "timeline-dot land"} />
-                    <div>
-                      <time>{["08:00 hs", "11:30 hs", "18:45 hs"][index] ?? "20:00 hs"}</time>
-                      <p>{placement.tituloContenido?.trim() || placement.nombreIcono || "Registro historico"}</p>
-                    </div>
-                  </div>
-                ) : (
-                  <div key="empty-timeline" className="event-timeline-item">
-                    <span className="timeline-dot land" />
-                    <div>
-                      <time>08:00 hs</time>
-                      <p>Sin registros cargados para este dia</p>
-                    </div>
-                  </div>
-                )
-              )}
-            </div>
-          </section>
-        </aside>
-      ) : null}
-
       <div className="map-brand-badge">
         <strong>Museo Malvinas</strong>
         <span>Mapa historico &middot; 1982</span>
       </div>
-
-      {isViewMode ? (
-        <div className="map-legend">
-          <strong>Leyenda</strong>
-          <span><i className="legend-avatar land" aria-hidden="true" /> Posicion terrestre / AR</span>
-          <span><i className="legend-avatar naval" aria-hidden="true" /> Posicion naval / UK</span>
-        </div>
-      ) : null}
 
       {isEditMode && editingPlacement ? (
         <section className="content-editor-modal">

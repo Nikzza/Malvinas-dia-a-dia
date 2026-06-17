@@ -543,6 +543,7 @@ export function MapCanvas({
                 ...
               </button>
               <button
+                aria-label="Editar trayectoria"
                 className="placed-icon-transition"
                 onClick={(event) => {
                   event.stopPropagation();
@@ -551,7 +552,7 @@ export function MapCanvas({
                 onPointerDown={(event) => event.stopPropagation()}
                 type="button"
               >
-                -&gt;
+                T
               </button>
             </>
           ) : null}

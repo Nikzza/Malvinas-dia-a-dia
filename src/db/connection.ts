@@ -171,6 +171,7 @@ function ensureIconCascadeDelete(db: Database.Database) {
 }
 
 function runCompatibilityMigrations(db: Database.Database) {
+  ensureColumn(db, "dias", "es_evento_destacado", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn(db, "iconos_mapa", "tipo_pin", "TEXT NOT NULL DEFAULT 'land'");
   ensureColumn(db, "iconos_mapa", "tipo_contenido", "TEXT");
   ensureColumn(db, "iconos_mapa", "texto_descriptivo", "TEXT");
