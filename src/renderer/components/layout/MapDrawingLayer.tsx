@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { Circle, Layer, Line, Stage } from "react-konva";
 import type Konva from "konva";
-import type { MapDrawingLine, MapDrawingLineStyle } from "../../../shared/types/mapDrawingLine";
+import type {
+  MapDrawingLine,
+  MapDrawingLineColor,
+  MapDrawingLineStyle
+} from "../../../shared/types/mapDrawingLine";
 
 export type MapDrawingTool = "freehand" | "straight" | "curve";
 
@@ -10,11 +14,20 @@ type MapDrawingLayerProps = {
   height: number;
   lines: MapDrawingLine[];
   isDrawingEnabled: boolean;
+  lineColor: MapDrawingLineColor;
   lineStyle: MapDrawingLineStyle;
   drawingTool: MapDrawingTool;
-  onCreateLine: (pointsPct: number[], style: MapDrawingLineStyle) => Promise<void>;
+  onCreateLine: (pointsPct: number[], style: MapDrawingLineStyle, color: MapDrawingLineColor) => Promise<void>;
   linesOpacity?: number;
   linesRevealProgress?: number;
+};
+
+const DRAWING_LINE_COLOR_HEX: Record<MapDrawingLineColor, string> = {
+  red: "#E65050",
+  yellow: "#DBB060",
+  blue: "#3B82F6",
+  white: "#F7F7F2",
+  black: "#11151B"
 };
 
 function getDash(style: MapDrawingLineStyle) {
@@ -123,6 +136,7 @@ export function MapDrawingLayer({
   height,
   lines,
   isDrawingEnabled,
+  lineColor,
   lineStyle,
   drawingTool,
   onCreateLine,
@@ -193,7 +207,7 @@ export function MapDrawingLayer({
       setPreviewPoint(null);
       setIsSavingLine(true);
 
-      void onCreateLine(nextLinePoints, lineStyle).finally(() => {
+      void onCreateLine(nextLinePoints, lineStyle, lineColor).finally(() => {
         setIsSavingLine(false);
       });
       return;
@@ -218,7 +232,7 @@ export function MapDrawingLayer({
       setPreviewPoint(null);
       setIsSavingLine(true);
 
-      void onCreateLine(nextLinePoints, lineStyle).finally(() => {
+      void onCreateLine(nextLinePoints, lineStyle, lineColor).finally(() => {
         setIsSavingLine(false);
       });
       return;
@@ -281,7 +295,7 @@ export function MapDrawingLayer({
     setIsSavingLine(true);
 
     try {
-      await onCreateLine(currentPointsPct, lineStyle);
+      await onCreateLine(currentPointsPct, lineStyle, lineColor);
     } finally {
       setCurrentPointsPct([]);
       setIsSavingLine(false);
@@ -344,7 +358,7 @@ export function MapDrawingLayer({
             listening={false}
             opacity={linesOpacity}
             points={getPartialCanvasPoints(toCanvasPoints(line.pointsPct, width, height), linesRevealProgress)}
-            stroke="#DBB060"
+            stroke={DRAWING_LINE_COLOR_HEX[line.color]}
             strokeWidth={6}
           />
         ))}
@@ -355,7 +369,7 @@ export function MapDrawingLayer({
             lineJoin="round"
             listening={false}
             points={renderedCurrentPoints}
-            stroke="#DBB060"
+            stroke={DRAWING_LINE_COLOR_HEX[lineColor]}
             strokeWidth={6}
           />
         ) : null}
@@ -366,17 +380,17 @@ export function MapDrawingLayer({
             lineJoin="round"
             listening={false}
             points={pointToPointPreview}
-            stroke="#DBB060"
+            stroke={DRAWING_LINE_COLOR_HEX[lineColor]}
             strokeWidth={6}
           />
         ) : null}
         {pointMarkers.map((point, index) => (
           <Circle
             key={`marker-${index}`}
-            fill="#DBB060"
+            fill={DRAWING_LINE_COLOR_HEX[lineColor]}
             listening={false}
             radius={6}
-            stroke="#DBB060"
+            stroke={DRAWING_LINE_COLOR_HEX[lineColor]}
             strokeWidth={0}
             x={(point.xPct / 100) * width}
             y={(point.yPct / 100) * height}

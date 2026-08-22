@@ -1,10 +1,16 @@
 import { getDatabase } from "../connection";
-import type { MapDrawingLine, MapDrawingLineStyle } from "../../shared/types/mapDrawingLine";
+import {
+  isMapDrawingLineColor,
+  type MapDrawingLine,
+  type MapDrawingLineColor,
+  type MapDrawingLineStyle
+} from "../../shared/types/mapDrawingLine";
 
 type MapDrawingLineRow = {
   id: number;
   id_dia: number;
   estilo: MapDrawingLineStyle;
+  color: string;
   puntos_pct_json: string;
   created_at: string;
   updated_at: string;
@@ -30,7 +36,7 @@ export const mapDrawingLineRepository = {
     const rows = db
       .prepare(
         `
-          SELECT id, id_dia, estilo, puntos_pct_json, created_at, updated_at
+          SELECT id, id_dia, estilo, color, puntos_pct_json, created_at, updated_at
           FROM lineas_mapa
           ORDER BY id_dia ASC, id ASC
         `
@@ -41,19 +47,20 @@ export const mapDrawingLineRepository = {
       id: row.id,
       dayId: row.id_dia,
       style: row.estilo,
+      color: isMapDrawingLineColor(row.color) ? row.color : "yellow",
       pointsPct: parsePoints(row.puntos_pct_json),
       createdAt: row.created_at,
       updatedAt: row.updated_at
     }));
   },
-  create: (dayId: number, style: MapDrawingLineStyle, pointsPct: number[]): void => {
+  create: (dayId: number, style: MapDrawingLineStyle, color: MapDrawingLineColor, pointsPct: number[]): void => {
     const db = getDatabase();
     db.prepare(
       `
-        INSERT INTO lineas_mapa (id_dia, estilo, puntos_pct_json)
-        VALUES (?, ?, ?)
+        INSERT INTO lineas_mapa (id_dia, estilo, color, puntos_pct_json)
+        VALUES (?, ?, ?, ?)
       `
-    ).run(dayId, style, JSON.stringify(pointsPct));
+    ).run(dayId, style, color, JSON.stringify(pointsPct));
   },
   remove: (lineId: number): void => {
     const db = getDatabase();

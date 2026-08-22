@@ -6,6 +6,7 @@ type MapIconTransitionRow = {
   id_colocacion_origen: number;
   id_colocacion_destino: number;
   puntos_pct_json: string;
+  velocidades_json: string;
   created_at: string;
   updated_at: string;
 };
@@ -24,13 +25,29 @@ function parsePoints(pointsPctJson: string) {
   }
 }
 
+function parseSpeeds(speedsJson: string) {
+  try {
+    const parsed = JSON.parse(speedsJson);
+
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed
+      .filter((value) => typeof value === "number" && Number.isFinite(value))
+      .map((value) => Math.min(100, Math.max(0, value)));
+  } catch {
+    return [];
+  }
+}
+
 export const mapIconTransitionRepository = {
   listAll: (): MapIconTransition[] => {
     const db = getDatabase();
     const rows = db
       .prepare(
         `
-          SELECT id, id_colocacion_origen, id_colocacion_destino, puntos_pct_json, created_at, updated_at
+          SELECT id, id_colocacion_origen, id_colocacion_destino, puntos_pct_json, velocidades_json, created_at, updated_at
           FROM transiciones_iconos_mapa
           ORDER BY id ASC
         `
@@ -42,11 +59,12 @@ export const mapIconTransitionRepository = {
       sourcePlacementId: row.id_colocacion_origen,
       targetPlacementId: row.id_colocacion_destino,
       pointsPct: parsePoints(row.puntos_pct_json),
+      pointSpeeds: parseSpeeds(row.velocidades_json),
       createdAt: row.created_at,
       updatedAt: row.updated_at
     }));
   },
-  upsert: (sourcePlacementId: number, targetPlacementId: number, pointsPct: number[]): void => {
+  upsert: (sourcePlacementId: number, targetPlacementId: number, pointsPct: number[], pointSpeeds: number[]): void => {
     const db = getDatabase();
     const existing = db
       .prepare(
@@ -62,19 +80,19 @@ export const mapIconTransitionRepository = {
       db.prepare(
         `
           UPDATE transiciones_iconos_mapa
-          SET puntos_pct_json = ?, updated_at = CURRENT_TIMESTAMP
+          SET puntos_pct_json = ?, velocidades_json = ?, updated_at = CURRENT_TIMESTAMP
           WHERE id = ?
         `
-      ).run(JSON.stringify(pointsPct), existing.id);
+      ).run(JSON.stringify(pointsPct), JSON.stringify(pointSpeeds), existing.id);
       return;
     }
 
     db.prepare(
       `
-        INSERT INTO transiciones_iconos_mapa (id_colocacion_origen, id_colocacion_destino, puntos_pct_json)
-        VALUES (?, ?, ?)
+        INSERT INTO transiciones_iconos_mapa (id_colocacion_origen, id_colocacion_destino, puntos_pct_json, velocidades_json)
+        VALUES (?, ?, ?, ?)
       `
-    ).run(sourcePlacementId, targetPlacementId, JSON.stringify(pointsPct));
+    ).run(sourcePlacementId, targetPlacementId, JSON.stringify(pointsPct), JSON.stringify(pointSpeeds));
   },
   remove: (transitionId: number): void => {
     const db = getDatabase();

@@ -1,8 +1,9 @@
 import type { Day } from "./day";
 import type { DayIcon } from "./dayIcon";
-import type { MapDrawingLine, MapDrawingLineStyle } from "./mapDrawingLine";
-import type { MapIconPlacement, MapPinKind } from "./mapIconPlacement";
+import type { MapDrawingLine, MapDrawingLineColor, MapDrawingLineStyle } from "./mapDrawingLine";
+import type { MapIconPlacement } from "./mapIconPlacement";
 import type { MapIconTransition } from "./mapIconTransition";
+import type { MapLabel, MapLabelStyle } from "./mapLabel";
 
 export type IpcResponse<T> = {
   ok: boolean;
@@ -18,6 +19,7 @@ export type BootstrapData = {
   iconsByDay: Record<number, DayIcon[]>;
   mapDrawingLinesByDay: Record<number, MapDrawingLine[]>;
   mapPlacementsByDay: Record<number, MapIconPlacement[]>;
+  mapLabelsByDay: Record<number, MapLabel[]>;
   mapIconTransitions: MapIconTransition[];
 };
 
@@ -59,9 +61,32 @@ export type DeleteMapIconPlacementPayload = {
   placementId: number;
 };
 
+export type CreateMapLabelPayload = {
+  dayId: number;
+  posXPct: number;
+  posYPct: number;
+  style: MapLabelStyle;
+};
+
+export type UpdateMapLabelPositionPayload = {
+  labelId: number;
+  posXPct: number;
+  posYPct: number;
+};
+
+export type UpdateMapLabelContentPayload = {
+  labelId: number;
+  text: string;
+};
+
+export type DeleteMapLabelPayload = {
+  labelId: number;
+};
+
 export type CreateMapDrawingLinePayload = {
   dayId: number;
   style: MapDrawingLineStyle;
+  color: MapDrawingLineColor;
   pointsPct: number[];
 };
 
@@ -73,6 +98,7 @@ export type UpsertMapIconTransitionPayload = {
   sourcePlacementId: number;
   targetPlacementId: number;
   pointsPct: number[];
+  pointSpeeds: number[];
 };
 
 export type DeleteMapIconTransitionPayload = {
@@ -81,11 +107,10 @@ export type DeleteMapIconTransitionPayload = {
 
 export type UpdateMapIconPlacementContentPayload = {
   placementId: number;
-  pinKind: MapPinKind;
-  tipoContenido: "texto" | "imagen" | "video" | null;
   tituloContenido: string | null;
   textoDescriptivo: string | null;
-  rutaRecursoLocal: string | null;
+  rutaImagenLocal: string | null;
+  rutaVideoLocal: string | null;
 };
 
 export type SelectContentResourcePayload = {
