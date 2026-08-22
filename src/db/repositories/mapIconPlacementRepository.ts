@@ -1,5 +1,5 @@
 import { getDatabase } from "../connection";
-import type { MapIconPlacement, MapPinKind } from "../../shared/types/mapIconPlacement";
+import type { MapIconPlacement } from "../../shared/types/mapIconPlacement";
 
 type MapIconPlacementRow = {
   id: number;
@@ -7,11 +7,10 @@ type MapIconPlacementRow = {
   id_icono_biblioteca: number;
   pos_x_pct: number;
   pos_y_pct: number;
-  tipo_pin: MapPinKind;
-  tipo_contenido: "texto" | "imagen" | "video" | null;
   titulo_contenido: string | null;
   texto_descriptivo: string | null;
-  ruta_recurso_local: string | null;
+  ruta_imagen_local: string | null;
+  ruta_video_local: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -22,7 +21,7 @@ export const mapIconPlacementRepository = {
     const rows = db
       .prepare(
         `
-          SELECT id, id_dia, id_icono_biblioteca, pos_x_pct, pos_y_pct, tipo_pin, tipo_contenido, titulo_contenido, texto_descriptivo, ruta_recurso_local, created_at, updated_at
+          SELECT id, id_dia, id_icono_biblioteca, pos_x_pct, pos_y_pct, titulo_contenido, texto_descriptivo, ruta_imagen_local, ruta_video_local, created_at, updated_at
           FROM iconos_mapa
           ORDER BY id_dia ASC, id ASC
         `
@@ -35,11 +34,10 @@ export const mapIconPlacementRepository = {
       libraryIconId: row.id_icono_biblioteca,
       posXPct: row.pos_x_pct,
       posYPct: row.pos_y_pct,
-      pinKind: row.tipo_pin,
-      tipoContenido: row.tipo_contenido,
       tituloContenido: row.titulo_contenido,
       textoDescriptivo: row.texto_descriptivo,
-      rutaRecursoLocal: row.ruta_recurso_local,
+      rutaImagenLocal: row.ruta_imagen_local,
+      rutaVideoLocal: row.ruta_video_local,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     }));
@@ -65,20 +63,19 @@ export const mapIconPlacementRepository = {
   },
   updateContent: (
     placementId: number,
-    pinKind: MapPinKind,
-    tipoContenido: "texto" | "imagen" | "video" | null,
     tituloContenido: string | null,
     textoDescriptivo: string | null,
-    rutaRecursoLocal: string | null
+    rutaImagenLocal: string | null,
+    rutaVideoLocal: string | null
   ): void => {
     const db = getDatabase();
     db.prepare(
       `
         UPDATE iconos_mapa
-        SET tipo_pin = ?, tipo_contenido = ?, titulo_contenido = ?, texto_descriptivo = ?, ruta_recurso_local = ?, updated_at = CURRENT_TIMESTAMP
+        SET titulo_contenido = ?, texto_descriptivo = ?, ruta_imagen_local = ?, ruta_video_local = ?, updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
       `
-    ).run(pinKind, tipoContenido, tituloContenido, textoDescriptivo, rutaRecursoLocal, placementId);
+    ).run(tituloContenido, textoDescriptivo, rutaImagenLocal, rutaVideoLocal, placementId);
   },
   remove: (placementId: number): void => {
     const db = getDatabase();

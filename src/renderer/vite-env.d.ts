@@ -2,6 +2,7 @@
 
 import type {
   BootstrapData,
+  CreateMapLabelPayload,
   CreateMapDrawingLinePayload,
   CreateMapIconPlacementPayload,
   CreateDayIconPayload,
@@ -9,18 +10,22 @@ import type {
   DeleteMapDrawingLinePayload,
   DeleteMapIconTransitionPayload,
   DeleteMapIconPlacementPayload,
+  DeleteMapLabelPayload,
   DeleteDayIconPayload,
   SelectContentResourcePayload,
   UpsertMapIconTransitionPayload,
   UpdateMapIconPlacementContentPayload,
   UpdateMapIconPlacementPayload,
+  UpdateMapLabelContentPayload,
+  UpdateMapLabelPositionPayload,
   UpdateDayPayload
 } from "../shared/types/ipc";
 
 declare global {
   interface Window {
     mapaMalvinas: {
-      getBootstrapData: () => Promise<BootstrapData>;
+      getBootstrapData: (profileId: string) => Promise<BootstrapData>;
+      deleteProfileData: (profileId: string) => Promise<void>;
       createDay: (payload: CreateDayPayload) => Promise<BootstrapData>;
       deleteDay: (dayId: number) => Promise<BootstrapData>;
       updateDay: (payload: UpdateDayPayload) => Promise<BootstrapData>;
@@ -34,6 +39,10 @@ declare global {
       createMapIconPlacement: (payload: CreateMapIconPlacementPayload) => Promise<BootstrapData>;
       updateMapIconPlacement: (payload: UpdateMapIconPlacementPayload) => Promise<BootstrapData>;
       deleteMapIconPlacement: (payload: DeleteMapIconPlacementPayload) => Promise<BootstrapData>;
+      createMapLabel: (payload: CreateMapLabelPayload) => Promise<BootstrapData>;
+      updateMapLabelPosition: (payload: UpdateMapLabelPositionPayload) => Promise<BootstrapData>;
+      updateMapLabelContent: (payload: UpdateMapLabelContentPayload) => Promise<BootstrapData>;
+      deleteMapLabel: (payload: DeleteMapLabelPayload) => Promise<BootstrapData>;
       updateMapIconPlacementContent: (payload: UpdateMapIconPlacementContentPayload) => Promise<BootstrapData>;
       selectContentResource: (payload: SelectContentResourcePayload) => Promise<string | null>;
     };

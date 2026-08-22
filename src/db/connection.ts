@@ -91,6 +91,8 @@ function ensureIconCascadeDelete(db: Database.Database) {
         tipo_contenido TEXT,
         texto_descriptivo TEXT,
         ruta_recurso_local TEXT,
+        ruta_imagen_local TEXT,
+        ruta_video_local TEXT,
         titulo_contenido TEXT,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -103,6 +105,7 @@ function ensureIconCascadeDelete(db: Database.Database) {
         id_colocacion_origen INTEGER NOT NULL,
         id_colocacion_destino INTEGER NOT NULL,
         puntos_pct_json TEXT NOT NULL,
+        velocidades_json TEXT NOT NULL DEFAULT '[]',
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (id_colocacion_origen) REFERENCES iconos_mapa(id) ON DELETE CASCADE,
@@ -121,6 +124,8 @@ function ensureIconCascadeDelete(db: Database.Database) {
         tipo_contenido,
         texto_descriptivo,
         ruta_recurso_local,
+        ruta_imagen_local,
+        ruta_video_local,
         titulo_contenido,
         created_at,
         updated_at
@@ -135,6 +140,8 @@ function ensureIconCascadeDelete(db: Database.Database) {
         tipo_contenido,
         texto_descriptivo,
         ruta_recurso_local,
+        ruta_imagen_local,
+        ruta_video_local,
         titulo_contenido,
         created_at,
         updated_at
@@ -147,6 +154,7 @@ function ensureIconCascadeDelete(db: Database.Database) {
         id_colocacion_origen,
         id_colocacion_destino,
         puntos_pct_json,
+        velocidades_json,
         created_at,
         updated_at
       )
@@ -155,6 +163,7 @@ function ensureIconCascadeDelete(db: Database.Database) {
         id_colocacion_origen,
         id_colocacion_destino,
         puntos_pct_json,
+        velocidades_json,
         created_at,
         updated_at
       FROM transiciones_iconos_mapa_legacy
@@ -171,35 +180,70 @@ function ensureIconCascadeDelete(db: Database.Database) {
 }
 
 function runCompatibilityMigrations(db: Database.Database) {
+  ensureColumn(db, "dias", "perfil_id", "TEXT");
   ensureColumn(db, "dias", "es_evento_destacado", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn(db, "iconos_mapa", "tipo_pin", "TEXT NOT NULL DEFAULT 'land'");
   ensureColumn(db, "iconos_mapa", "tipo_contenido", "TEXT");
   ensureColumn(db, "iconos_mapa", "texto_descriptivo", "TEXT");
   ensureColumn(db, "iconos_mapa", "ruta_recurso_local", "TEXT");
+  ensureColumn(db, "iconos_mapa", "ruta_imagen_local", "TEXT");
+  ensureColumn(db, "iconos_mapa", "ruta_video_local", "TEXT");
   ensureColumn(db, "iconos_mapa", "titulo_contenido", "TEXT");
+  db.exec(`
+    UPDATE iconos_mapa
+    SET
+      ruta_imagen_local = CASE
+        WHEN ruta_imagen_local IS NULL AND tipo_contenido = 'imagen' THEN ruta_recurso_local
+        ELSE ruta_imagen_local
+      END,
+      ruta_video_local = CASE
+        WHEN ruta_video_local IS NULL AND tipo_contenido = 'video' THEN ruta_recurso_local
+        ELSE ruta_video_local
+      END
+  `);
   db.exec(`
     CREATE TABLE IF NOT EXISTS lineas_mapa (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       id_dia INTEGER NOT NULL,
       estilo TEXT NOT NULL DEFAULT 'solid',
+      color TEXT NOT NULL DEFAULT 'yellow',
       puntos_pct_json TEXT NOT NULL,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (id_dia) REFERENCES dias(id)
     )
   `);
+  ensureColumn(db, "lineas_mapa", "color", "TEXT NOT NULL DEFAULT 'yellow'");
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS etiquetas_mapa (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id_dia INTEGER NOT NULL,
+      pos_x_pct REAL NOT NULL,
+      pos_y_pct REAL NOT NULL,
+      estilo TEXT NOT NULL DEFAULT 'gray',
+      texto TEXT NOT NULL DEFAULT 'Gris',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (id_dia) REFERENCES dias(id) ON DELETE CASCADE
+    )
+  `);
+  db.prepare(
+    "UPDATE etiquetas_mapa SET texto = 'Gris' WHERE estilo = 'gray' AND texto = 'Nueva etiqueta'"
+  ).run();
   db.exec(`
     CREATE TABLE IF NOT EXISTS transiciones_iconos_mapa (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       id_colocacion_origen INTEGER NOT NULL,
       id_colocacion_destino INTEGER NOT NULL,
       puntos_pct_json TEXT NOT NULL,
+      velocidades_json TEXT NOT NULL DEFAULT '[]',
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (id_colocacion_origen) REFERENCES iconos_mapa(id) ON DELETE CASCADE,
       FOREIGN KEY (id_colocacion_destino) REFERENCES iconos_mapa(id) ON DELETE CASCADE
     )
   `);
+  ensureColumn(db, "transiciones_iconos_mapa", "velocidades_json", "TEXT NOT NULL DEFAULT '[]'");
   ensureIconCascadeDelete(db);
 }
 

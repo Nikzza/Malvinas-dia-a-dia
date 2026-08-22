@@ -7,9 +7,14 @@ import type {
 import maplibregl, { type StyleSpecification } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { Day } from "../../../shared/types/day";
-import type { MapDrawingLine, MapDrawingLineStyle } from "../../../shared/types/mapDrawingLine";
+import type {
+  MapDrawingLine,
+  MapDrawingLineColor,
+  MapDrawingLineStyle
+} from "../../../shared/types/mapDrawingLine";
 import type { DayIcon } from "../../../shared/types/dayIcon";
 import type { MapIconPlacement } from "../../../shared/types/mapIconPlacement";
+import type { MapLabel, MapLabelStyle } from "../../../shared/types/mapLabel";
 import { MapDrawingLayer } from "./MapDrawingLayer";
 import type { MapDrawingTool } from "./MapDrawingLayer";
 
@@ -17,23 +22,35 @@ type MapCanvasProps = {
   activeDay: Day | null;
   animatedPlacementPositions: Record<number, { x: number; y: number }>;
   drawingLines: MapDrawingLine[];
+  drawingLineColor: MapDrawingLineColor;
   drawingLineStyle: MapDrawingLineStyle;
   drawingTool: MapDrawingTool;
   dragLibraryIcon: DayIcon | null;
+  dragLabelStyle: MapLabelStyle | null;
   isDrawingEnabled: boolean;
   isEditable: boolean;
   isTransitionEditing: boolean;
   onActivatePlacement?: (placement: MapIconPlacement) => void;
   onAddTransitionWaypoint: (posXPct: number, posYPct: number) => void;
-  onCreateDrawingLine: (pointsPct: number[], style: MapDrawingLineStyle) => Promise<void>;
+  onCreateDrawingLine: (
+    pointsPct: number[],
+    style: MapDrawingLineStyle,
+    color: MapDrawingLineColor
+  ) => Promise<void>;
   onCreatePlacement: (libraryIconId: number, posXPct: number, posYPct: number) => Promise<void>;
+  onCreateMapLabel: (style: MapLabelStyle, posXPct: number, posYPct: number) => Promise<void>;
+  onDeleteMapLabel: (labelId: number) => Promise<void>;
+  onEditMapLabel: (label: MapLabel) => void;
+  onMoveMapLabel: (labelId: number, posXPct: number, posYPct: number) => Promise<void>;
   onMovePlacement: (placementId: number, posXPct: number, posYPct: number) => Promise<void>;
   onMoveTransitionWaypoint: (index: number, posXPct: number, posYPct: number) => void;
   onDeletePlacement: (placementId: number) => Promise<void>;
   onEditPlacement: (placement: MapIconPlacement) => void;
   onEditTransition: (placement: MapIconPlacement) => void;
   placements: MapIconPlacement[];
+  labels: MapLabel[];
   previousDrawingLines: MapDrawingLine[];
+  previousLabels: MapLabel[];
   previousPlacements: MapIconPlacement[];
   transitionProgress: number;
   transitionEditorSourcePlacement: MapIconPlacement | null;
@@ -144,36 +161,35 @@ function toSvgPolylinePoints(pointsPct: number[], width: number, height: number)
   return points.join(" ");
 }
 
-function isNavalPlacement(placement: MapIconPlacement) {
-  if (placement.pinKind) {
-    return placement.pinKind === "naval";
-  }
-
-  const text = `${placement.nombreIcono ?? ""} ${placement.tituloContenido ?? ""} ${placement.textoDescriptivo ?? ""}`.toLowerCase();
-  return ["ara", "naval", "buque", "barco", "crucero", "submarino", "fragata"].some((keyword) => text.includes(keyword));
-}
-
 export function MapCanvas({
   activeDay,
   animatedPlacementPositions,
   drawingLines,
+  drawingLineColor,
   drawingLineStyle,
   drawingTool,
   dragLibraryIcon,
+  dragLabelStyle,
   isDrawingEnabled,
   isEditable,
   isTransitionEditing,
   onActivatePlacement,
   onAddTransitionWaypoint,
   onCreateDrawingLine,
+  onCreateMapLabel,
   onCreatePlacement,
+  onDeleteMapLabel,
   onDeletePlacement,
+  onEditMapLabel,
   onEditPlacement,
   onEditTransition,
+  onMoveMapLabel,
   onMovePlacement,
   onMoveTransitionWaypoint,
   placements,
+  labels,
   previousDrawingLines,
+  previousLabels,
   previousPlacements,
   transitionProgress,
   transitionEditorSourcePlacement,
@@ -352,9 +368,13 @@ export function MapCanvas({
     [map, mapViewVersion, transitionWaypointPointsPct, viewportSize.height, viewportSize.width]
   );
 
-  async function handleCreateDrawingLine(pointsPct: number[], style: MapDrawingLineStyle) {
+  async function handleCreateDrawingLine(
+    pointsPct: number[],
+    style: MapDrawingLineStyle,
+    color: MapDrawingLineColor
+  ) {
     const worldPointsPct = pairsToWorldPct(pointsPct, mapInstanceRef.current, viewportSize.width, viewportSize.height);
-    await onCreateDrawingLine(worldPointsPct, style);
+    await onCreateDrawingLine(worldPointsPct, style, color);
   }
 
   async function handlePlacementPointerUp(event: ReactPointerEvent<HTMLButtonElement>, placement: MapIconPlacement) {
@@ -368,10 +388,21 @@ export function MapCanvas({
     await onMovePlacement(placement.id, pct.x, pct.y);
   }
 
+  async function handleLabelPointerUp(event: ReactPointerEvent<HTMLDivElement>, label: MapLabel) {
+    const pct = getWorldPctFromPointer(event.clientX, event.clientY);
+    event.currentTarget.releasePointerCapture(event.pointerId);
+
+    if (!pct) {
+      return;
+    }
+
+    await onMoveMapLabel(label.id, pct.x, pct.y);
+  }
+
   async function handleDrop(event: ReactDragEvent<HTMLDivElement>) {
     event.preventDefault();
 
-    if (!isEditable || !dragLibraryIcon) {
+    if (!isEditable || (!dragLibraryIcon && !dragLabelStyle)) {
       return;
     }
 
@@ -381,7 +412,14 @@ export function MapCanvas({
       return;
     }
 
-    await onCreatePlacement(dragLibraryIcon.id, pct.x, pct.y);
+    if (dragLabelStyle) {
+      await onCreateMapLabel(dragLabelStyle, pct.x, pct.y);
+      return;
+    }
+
+    if (dragLibraryIcon) {
+      await onCreatePlacement(dragLibraryIcon.id, pct.x, pct.y);
+    }
   }
 
   function handleTransitionWaypointPointerDown(event: ReactPointerEvent<HTMLButtonElement>, index: number) {
@@ -416,13 +454,22 @@ export function MapCanvas({
   }
 
   function handleViewportClick(event: ReactMouseEvent<HTMLDivElement>) {
-    if (!isTransitionEditing) {
+    const target = event.target;
+
+    if (target instanceof HTMLElement && target.closest(".placed-icon-wrap, .map-label-wrap, .transition-waypoint")) {
       return;
     }
 
-    const target = event.target;
+    if (isEditable && dragLabelStyle) {
+      const labelPct = getWorldPctFromPointer(event.clientX, event.clientY);
 
-    if (target instanceof HTMLElement && target.closest(".placed-icon-wrap, .transition-waypoint")) {
+      if (labelPct) {
+        void onCreateMapLabel(dragLabelStyle, labelPct.x, labelPct.y);
+      }
+      return;
+    }
+
+    if (!isTransitionEditing) {
       return;
     }
 
@@ -435,7 +482,11 @@ export function MapCanvas({
     onAddTransitionWaypoint(pct.x, pct.y);
   }
 
-  const hasDayLayerTransition = transitionProgress < 1 || previousDrawingLines.length > 0 || previousPlacements.length > 0;
+  const hasDayLayerTransition =
+    transitionProgress < 1 ||
+    previousDrawingLines.length > 0 ||
+    previousPlacements.length > 0 ||
+    previousLabels.length > 0;
   const currentLayerOpacity = hasDayLayerTransition ? transitionProgress : 1;
   const previousLayerOpacity = hasDayLayerTransition ? 1 - transitionProgress : 0;
 
@@ -451,19 +502,17 @@ export function MapCanvas({
         return null;
       }
 
-      const pinKind = isNavalPlacement(placement) ? "naval" : "land";
-
       return (
         <div
           key={placement.id}
-          className={`placed-icon-wrap ${pinKind}`}
+          className="placed-icon-wrap"
           style={{
             left: `${screenPoint.xPct}%`,
             top: `${screenPoint.yPct}%`
           }}
         >
           <button
-            className={`placed-icon-button ${pinKind}`}
+            className="placed-icon-button"
             onClick={
               !isEditable && isInteractive
                 ? (event) => {
@@ -515,7 +564,7 @@ export function MapCanvas({
               />
             ) : null}
           </button>
-          <span className={`placed-icon-label ${pinKind}`}>
+          <span className="placed-icon-label">
             {placement.tituloContenido?.trim() || placement.nombreIcono || "Posicion"}
           </span>
           {isEditable && isInteractive ? (
@@ -561,6 +610,99 @@ export function MapCanvas({
     });
   }
 
+  function renderLabels(items: MapLabel[], isInteractive: boolean) {
+    return items.map((label) => {
+      const screenPoint = getScreenPoint(label.posXPct, label.posYPct);
+
+      if (!screenPoint) {
+        return null;
+      }
+
+      return (
+        <div
+          key={label.id}
+          className="map-label-wrap"
+          onClick={isEditable && isInteractive ? (event) => event.stopPropagation() : undefined}
+          style={{
+            left: `${screenPoint.xPct}%`,
+            top: `${screenPoint.yPct}%`
+          }}
+        >
+          <div
+            aria-label={label.text}
+            className={`map-label-shell ${label.style}`}
+            onPointerCancel={
+              isEditable && isInteractive
+                ? (event) => {
+                    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+                      event.currentTarget.releasePointerCapture(event.pointerId);
+                    }
+                  }
+                : undefined
+            }
+            onPointerDown={
+              isEditable && isInteractive
+                ? (event) => {
+                    event.stopPropagation();
+                    event.preventDefault();
+                    event.currentTarget.setPointerCapture(event.pointerId);
+                  }
+                : undefined
+            }
+            onPointerMove={
+              isEditable && isInteractive
+                ? (event) => {
+                    event.stopPropagation();
+                    event.preventDefault();
+                  }
+                : undefined
+            }
+            onPointerUp={
+              isEditable && isInteractive
+                ? (event) => {
+                    event.stopPropagation();
+                    void handleLabelPointerUp(event, label);
+                  }
+                : undefined
+            }
+            style={!isEditable || !isInteractive ? { pointerEvents: "none" } : undefined}
+          >
+            <span className="map-label-face">{label.text}</span>
+          </div>
+
+          {isEditable && isInteractive ? (
+            <>
+              <button
+                aria-label="Eliminar etiqueta"
+                className="map-label-delete"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  void onDeleteMapLabel(label.id);
+                }}
+                onPointerDown={(event) => event.stopPropagation()}
+                type="button"
+              >
+                x
+              </button>
+              <button
+                aria-label="Editar etiqueta"
+                className="map-label-edit"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onEditMapLabel(label);
+                }}
+                onPointerDown={(event) => event.stopPropagation()}
+                type="button"
+              >
+                ...
+              </button>
+            </>
+          ) : null}
+        </div>
+      );
+    });
+  }
+
   return (
     <section className="map-stage">
       <div
@@ -590,6 +732,7 @@ export function MapCanvas({
                   style={{ opacity: previousLayerOpacity }}
                 >
                   <MapDrawingLayer
+                    lineColor={drawingLineColor}
                     drawingTool={drawingTool}
                     height={viewportSize.height}
                     isDrawingEnabled={false}
@@ -605,12 +748,14 @@ export function MapCanvas({
                   style={{ opacity: previousLayerOpacity }}
                 >
                   {renderPlacements(previousPlacements, false)}
+                  {renderLabels(previousLabels, false)}
                 </div>
               </>
             ) : null}
 
             <div className="drawing-layer-surface day-layer-current" style={{ opacity: currentLayerOpacity }}>
               <MapDrawingLayer
+                lineColor={drawingLineColor}
                 drawingTool={drawingTool}
                 height={viewportSize.height}
                 isDrawingEnabled={isEditable && isDrawingEnabled}
@@ -671,6 +816,7 @@ export function MapCanvas({
               )}
 
               {renderPlacements(placements, true)}
+              {renderLabels(labels, true)}
             </div>
           </>
         ) : (

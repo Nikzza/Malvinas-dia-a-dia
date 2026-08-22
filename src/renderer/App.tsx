@@ -1,10 +1,20 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
 import type { BootstrapData } from "../shared/types/ipc";
-import type { MapDrawingLine, MapDrawingLineStyle } from "../shared/types/mapDrawingLine";
+import type {
+  MapDrawingLine,
+  MapDrawingLineColor,
+  MapDrawingLineStyle
+} from "../shared/types/mapDrawingLine";
 import type { DayIcon } from "../shared/types/dayIcon";
-import type { MapIconPlacement, MapPinKind } from "../shared/types/mapIconPlacement";
+import type { MapIconPlacement } from "../shared/types/mapIconPlacement";
 import type { MapIconTransition } from "../shared/types/mapIconTransition";
+import {
+  MAP_LABEL_STYLES,
+  MAP_LABEL_STYLE_NAMES,
+  type MapLabel,
+  type MapLabelStyle
+} from "../shared/types/mapLabel";
 import { EventDrawer } from "./components/layout/EventDrawer";
 import type { MapDrawingTool } from "./components/layout/MapDrawingLayer";
 import { MapCanvas } from "./components/layout/MapCanvas";
@@ -13,25 +23,38 @@ import { TopTimeline } from "./components/layout/TopTimeline";
 type AppMode = "profiles" | "profile-admin" | "menu" | "edit" | "view";
 type MediaContentType = "imagen" | "video";
 type PasswordGateMode = "verify" | "create" | "change";
+type PasswordGateScope = "edit" | "profiles";
 const TRANSITION_ANIMATION_MS = 1800;
+const DEFAULT_WAYPOINT_SPEED = 50;
 const DAY_LAYER_TRANSITION_MS = 900;
 const PROFILES_STORAGE_KEY = "malvinas_profiles";
 const ACTIVE_PROFILE_STORAGE_KEY = "malvinas_active_profile";
 const EDIT_PASSWORD_STORAGE_KEY = "malvinas_edit_password";
-const DEFAULT_PROFILE_COLOR = "#163A61";
+const PROFILES_PASSWORD_STORAGE_KEY = "malvinas_profiles_password";
+const DEFAULT_PROFILES_PASSWORD = "1111";
 const PROFILE_BORDER_GOLD = "#DBB060";
-const PROFILE_BORDER_BLUE = "#81D2F7";
+const DEFAULT_PROFILE_CENTER: [number, number] = [-59.5236, -51.7963];
+const DEFAULT_PROFILE_ZOOM = 6.25;
+const DRAWING_COLOR_OPTIONS: Array<{ value: MapDrawingLineColor; label: string; hex: string }> = [
+  { value: "red", label: "Rojo", hex: "#E65050" },
+  { value: "yellow", label: "Amarillo", hex: "#DBB060" },
+  { value: "blue", label: "Azul", hex: "#3B82F6" },
+  { value: "white", label: "Blanco", hex: "#F7F7F2" },
+  { value: "black", label: "Negro", hex: "#11151B" }
+];
 
 type TransitionEditingState = {
   transitionId: number | null;
   sourcePlacementId: number;
   targetPlacementId: number;
   waypointPointsPct: number[];
+  pointSpeeds: number[];
 };
 
 type DayLayerSnapshot = {
   drawingLines: MapDrawingLine[];
   placements: MapIconPlacement[];
+  labels: MapLabel[];
 };
 
 type MalvinasProfile = {
@@ -65,11 +88,6 @@ type MalvinasProfile = {
 type ProfileFormState = {
   name: string;
   avatar: string | null;
-  avatarColor: string;
-  startDay: number;
-  startLng: string;
-  startLat: string;
-  startZoom: string;
 };
 
 function canUseLocalStorage() {
@@ -115,12 +133,12 @@ function createDefaultProfile(name = "Visitante"): MalvinasProfile {
     name,
     avatar: null,
     avatarInitials: getProfileInitials(name),
-    avatarColor: DEFAULT_PROFILE_COLOR,
+    avatarColor: PROFILE_BORDER_GOLD,
     createdAt: new Date().toISOString(),
     mapState: {
       startDay: 1,
-      startCenter: [-59.5, -51.7],
-      startZoom: 6.25
+      startCenter: [...DEFAULT_PROFILE_CENTER],
+      startZoom: DEFAULT_PROFILE_ZOOM
     },
     icons: [],
     drawings: {},
@@ -136,46 +154,30 @@ function createDefaultProfile(name = "Visitante"): MalvinasProfile {
 function getEmptyProfileForm(): ProfileFormState {
   return {
     name: "",
-    avatar: null,
-    avatarColor: PROFILE_BORDER_GOLD,
-    startDay: 1,
-    startLng: "-59.5",
-    startLat: "-51.7",
-    startZoom: "6.25"
+    avatar: null
   };
 }
 
 function getProfileForm(profile: MalvinasProfile): ProfileFormState {
   return {
     name: profile.name,
-    avatar: profile.avatar,
-    avatarColor: profile.avatarColor,
-    startDay: profile.mapState.startDay,
-    startLng: String(profile.mapState.startCenter[0]),
-    startLat: String(profile.mapState.startCenter[1]),
-    startZoom: String(profile.mapState.startZoom)
+    avatar: profile.avatar
   };
 }
 
 function profileFromForm(form: ProfileFormState, existingProfile?: MalvinasProfile): MalvinasProfile {
   const name = form.name.trim() || "Visitante";
-  const startLng = Number(form.startLng);
-  const startLat = Number(form.startLat);
-  const startZoom = Number(form.startZoom);
 
   return {
     ...(existingProfile ?? createDefaultProfile(name)),
     name,
     avatar: form.avatar,
     avatarInitials: getProfileInitials(name),
-    avatarColor: form.avatarColor,
+    avatarColor: PROFILE_BORDER_GOLD,
     mapState: {
-      startDay: Math.min(Math.max(Number(form.startDay) || 1, 1), 9),
-      startCenter: [
-        Number.isFinite(startLng) ? startLng : -59.5,
-        Number.isFinite(startLat) ? startLat : -51.7
-      ],
-      startZoom: Number.isFinite(startZoom) ? startZoom : 6.25
+      startDay: 1,
+      startCenter: [...DEFAULT_PROFILE_CENTER],
+      startZoom: DEFAULT_PROFILE_ZOOM
     }
   };
 }
@@ -191,6 +193,8 @@ export function App() {
   const [profileForm, setProfileForm] = useState<ProfileFormState>(() => getEmptyProfileForm());
   const [profileFormError, setProfileFormError] = useState<string | null>(null);
   const [passwordGateMode, setPasswordGateMode] = useState<PasswordGateMode | null>(null);
+  const [passwordGateScope, setPasswordGateScope] = useState<PasswordGateScope>("edit");
+  const [isProfileAccessGranted, setIsProfileAccessGranted] = useState(false);
   const [passwordValue, setPasswordValue] = useState("");
   const [newPasswordValue, setNewPasswordValue] = useState("");
   const [confirmPasswordValue, setConfirmPasswordValue] = useState("");
@@ -200,15 +204,19 @@ export function App() {
   const [isSavingDay, setIsSavingDay] = useState(false);
   const [isIconsPanelOpen, setIsIconsPanelOpen] = useState(false);
   const [dragLibraryIcon, setDragLibraryIcon] = useState<DayIcon | null>(null);
+  const [isLabelsPanelOpen, setIsLabelsPanelOpen] = useState(false);
+  const [dragLabelStyle, setDragLabelStyle] = useState<MapLabelStyle | null>(null);
+  const [editingMapLabel, setEditingMapLabel] = useState<MapLabel | null>(null);
+  const [mapLabelText, setMapLabelText] = useState("");
   const [editingPlacement, setEditingPlacement] = useState<MapIconPlacement | null>(null);
-  const [contentType, setContentType] = useState<"texto" | "imagen" | "video">("texto");
-  const [contentPinKind, setContentPinKind] = useState<MapPinKind>("land");
   const [contentTitle, setContentTitle] = useState("");
   const [contentText, setContentText] = useState("");
-  const [contentResourcePath, setContentResourcePath] = useState<string | null>(null);
+  const [contentImagePath, setContentImagePath] = useState<string | null>(null);
+  const [contentVideoPath, setContentVideoPath] = useState<string | null>(null);
   const [isDrawingPanelOpen, setIsDrawingPanelOpen] = useState(false);
   const [isDrawingEnabled, setIsDrawingEnabled] = useState(false);
   const [drawingLineStyle, setDrawingLineStyle] = useState<MapDrawingLineStyle>("solid");
+  const [drawingLineColor, setDrawingLineColor] = useState<MapDrawingLineColor>("yellow");
   const [drawingTool, setDrawingTool] = useState<MapDrawingTool>("freehand");
   const [mode, setMode] = useState<AppMode>("profiles");
   const [selectedPlacement, setSelectedPlacement] = useState<MapIconPlacement | null>(null);
@@ -226,6 +234,7 @@ export function App() {
       setProfiles([defaultProfile]);
       setActiveProfileId(defaultProfile.id);
       setStorageWarning("Activa el almacenamiento local para guardar los perfiles");
+      setIsProfileAccessGranted(true);
       setMode("profiles");
       return;
     }
@@ -233,38 +242,73 @@ export function App() {
     try {
       const storedProfiles = window.localStorage.getItem(PROFILES_STORAGE_KEY);
       const parsedProfiles = storedProfiles ? (JSON.parse(storedProfiles) as MalvinasProfile[]) : [];
-      const nextProfiles = Array.isArray(parsedProfiles) && parsedProfiles.length ? parsedProfiles : [createDefaultProfile()];
+      const loadedProfiles = Array.isArray(parsedProfiles) && parsedProfiles.length ? parsedProfiles : [createDefaultProfile()];
+      const nextProfiles: MalvinasProfile[] = loadedProfiles.map((profile) => ({
+        ...profile,
+        avatarColor: PROFILE_BORDER_GOLD,
+        mapState: {
+          startDay: 1,
+          startCenter: [...DEFAULT_PROFILE_CENTER],
+          startZoom: DEFAULT_PROFILE_ZOOM
+        }
+      }));
       const storedActiveProfileId = window.localStorage.getItem(ACTIVE_PROFILE_STORAGE_KEY);
       const nextActiveProfileId =
         storedActiveProfileId && nextProfiles.some((profile) => profile.id === storedActiveProfileId)
           ? storedActiveProfileId
           : null;
 
-      if (!storedProfiles || !Array.isArray(parsedProfiles) || !parsedProfiles.length) {
-        window.localStorage.setItem(PROFILES_STORAGE_KEY, JSON.stringify(nextProfiles));
+      window.localStorage.setItem(PROFILES_STORAGE_KEY, JSON.stringify(nextProfiles));
+
+      if (!window.localStorage.getItem(PROFILES_PASSWORD_STORAGE_KEY)) {
+        window.localStorage.setItem(PROFILES_PASSWORD_STORAGE_KEY, DEFAULT_PROFILES_PASSWORD);
       }
 
       setProfiles(nextProfiles);
       setActiveProfileId(nextActiveProfileId);
       setMode(nextActiveProfileId ? "view" : "profiles");
+      setPasswordGateScope("profiles");
+      setPasswordGateMode(nextActiveProfileId ? null : "verify");
     } catch {
       const defaultProfile = createDefaultProfile();
       setProfiles([defaultProfile]);
       setActiveProfileId(defaultProfile.id);
       setStorageWarning("Activa el almacenamiento local para guardar los perfiles");
+      setIsProfileAccessGranted(true);
       setMode("profiles");
     }
   }, []);
 
   useEffect(() => {
+    if (!activeProfileId) {
+      setData(null);
+      setActiveDayId(null);
+      return;
+    }
+
+    setData(null);
+    setActiveDayId(null);
+    let isCancelled = false;
     window.mapaMalvinas
-      .getBootstrapData()
-      .then(setData)
+      .getBootstrapData(activeProfileId)
+      .then((nextData) => {
+        if (!isCancelled) {
+          setData(nextData);
+        }
+      })
       .catch((cause: unknown) => {
+        if (isCancelled) {
+          return;
+        }
+
         const message = cause instanceof Error ? cause.message : "No se pudo iniciar la aplicacion.";
         setError(message);
       });
-  }, []);
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [activeProfileId]);
 
   useEffect(() => {
     if (!data?.days.length) {
@@ -282,14 +326,13 @@ export function App() {
   const iconsLibrary = Object.values(data?.iconsByDay ?? {}).flat();
   const activeDrawingLines = activeDayId ? data?.mapDrawingLinesByDay[activeDayId] ?? [] : [];
   const activeMapPlacements = activeDayId ? data?.mapPlacementsByDay[activeDayId] ?? [] : [];
+  const activeMapLabels = activeDayId ? data?.mapLabelsByDay[activeDayId] ?? [] : [];
   const allMapPlacements = useMemo(() => Object.values(data?.mapPlacementsByDay ?? {}).flat(), [data?.mapPlacementsByDay]);
   const placementById = useMemo(() => new Map(allMapPlacements.map((placement) => [placement.id, placement] as const)), [allMapPlacements]);
   const transitions = data?.mapIconTransitions ?? [];
   const isEditMode = mode === "edit";
   const isViewMode = mode === "view";
   const isReadOnlyMode = isViewMode;
-  const activeDayIndex = days.findIndex((day) => day.id === activeDayId);
-  const activeDayNumber = activeDayIndex >= 0 ? activeDayIndex + 1 : 0;
   const previousActiveDayIdRef = useRef<number | null>(null);
   const transitionSourcePlacement = transitionEditing ? placementById.get(transitionEditing.sourcePlacementId) ?? null : null;
   const transitionTargetPlacement = transitionEditing ? placementById.get(transitionEditing.targetPlacementId) ?? null : null;
@@ -313,6 +356,8 @@ export function App() {
 
   useEffect(() => {
     setSelectedPlacement(null);
+    setEditingMapLabel(null);
+    setDragLabelStyle(null);
     setIsDrawingEnabled(false);
     setTransitionEditing(null);
     setAnimatedPlacementPositions({});
@@ -410,26 +455,33 @@ export function App() {
       return;
     }
 
+    const animatedTransitions = relevantTransitions.map((transition) => ({
+      placementId: direction > 0 ? transition.targetPlacementId : transition.sourcePlacementId,
+      path: createTimedTransitionPath(transition.pointsPct, transition.pointSpeeds, direction < 0)
+    }));
     let animationFrame = 0;
     const startTime = performance.now();
 
     const runFrame = (now: number) => {
-      const progress = Math.min(1, (now - startTime) / TRANSITION_ANIMATION_MS);
+      const elapsedMs = now - startTime;
       const nextPositions: Record<number, { x: number; y: number }> = {};
+      let hasRunningTransition = false;
 
-      for (const transition of relevantTransitions) {
-        const placementId = direction > 0 ? transition.targetPlacementId : transition.sourcePlacementId;
-        const pointsPct = direction > 0 ? transition.pointsPct : reversePointsPct(transition.pointsPct);
-        const point = getPointAlongPolyline(pointsPct, progress);
+      for (const transition of animatedTransitions) {
+        const state = getTimedTransitionState(transition.path, elapsedMs);
 
-        if (point) {
-          nextPositions[placementId] = point;
+        if (state.point) {
+          nextPositions[transition.placementId] = state.point;
+        }
+
+        if (!state.isComplete) {
+          hasRunningTransition = true;
         }
       }
 
       setAnimatedPlacementPositions(nextPositions);
 
-      if (progress < 1) {
+      if (hasRunningTransition) {
         animationFrame = window.requestAnimationFrame(runFrame);
         return;
       }
@@ -508,15 +560,14 @@ export function App() {
       return;
     }
 
-    const selectedPath = await window.mapaMalvinas.selectIconPng();
-
-    if (!selectedPath) {
-      return;
-    }
-
-    const fileName = selectedPath.split("\\").pop() ?? "Icono";
-
     try {
+      const selectedPath = await window.mapaMalvinas.selectIconPng();
+
+      if (!selectedPath) {
+        return;
+      }
+
+      const fileName = selectedPath.split("\\").pop() ?? "Icono";
       const nextData = await window.mapaMalvinas.createDayIcon({
         dayId: activeDayId,
         nombre: fileName.replace(/\.png$/i, ""),
@@ -525,6 +576,8 @@ export function App() {
       setData(nextData);
       setError(null);
       setIsDrawingPanelOpen(false);
+      setIsLabelsPanelOpen(false);
+      setDragLabelStyle(null);
       setIsIconsPanelOpen(true);
     } catch (cause: unknown) {
       const message = cause instanceof Error ? cause.message : "No se pudo guardar el icono.";
@@ -534,10 +587,25 @@ export function App() {
 
   function handleToggleDrawingPanel() {
     setIsDrawingPanelOpen((current) => !current);
+    setIsIconsPanelOpen(false);
+    setIsLabelsPanelOpen(false);
+    setDragLabelStyle(null);
   }
 
   function handleToggleIconsPanel() {
     setIsIconsPanelOpen((current) => !current);
+    setIsDrawingPanelOpen(false);
+    setIsDrawingEnabled(false);
+    setIsLabelsPanelOpen(false);
+    setDragLabelStyle(null);
+  }
+
+  function handleToggleLabelsPanel() {
+    setIsLabelsPanelOpen((current) => !current);
+    setIsDrawingPanelOpen(false);
+    setIsDrawingEnabled(false);
+    setIsIconsPanelOpen(false);
+    setDragLibraryIcon(null);
   }
 
   async function handleDeleteIcon(iconId: number) {
@@ -600,27 +668,113 @@ export function App() {
 
   function handleOpenPlacementEditor(placement: MapIconPlacement) {
     setEditingPlacement(placement);
-    setContentPinKind(placement.pinKind ?? (isNavalPlacement(placement) ? "naval" : "land"));
-    setContentType((placement.tipoContenido as "texto" | "imagen" | "video" | null) ?? "texto");
     setContentTitle(placement.tituloContenido ?? "");
     setContentText(placement.textoDescriptivo ?? "");
-    setContentResourcePath(placement.rutaRecursoLocal ?? null);
+    setContentImagePath(placement.rutaImagenLocal ?? null);
+    setContentVideoPath(placement.rutaVideoLocal ?? null);
   }
 
-  async function handlePickContentResource() {
-    if (contentType === "texto") {
+  async function handleCreateMapLabel(style: MapLabelStyle, posXPct: number, posYPct: number) {
+    if (!activeDayId) {
+      setError("Primero selecciona un dia para agregar etiquetas.");
       return;
     }
 
+    const currentLabelIds = new Set(activeMapLabels.map((label) => label.id));
+
+    try {
+      const nextData = await window.mapaMalvinas.createMapLabel({
+        dayId: activeDayId,
+        posXPct,
+        posYPct,
+        style
+      });
+      const createdLabel = (nextData.mapLabelsByDay[activeDayId] ?? []).find(
+        (label) => !currentLabelIds.has(label.id)
+      );
+
+      setData(nextData);
+      setDragLabelStyle(null);
+      setError(null);
+
+      if (createdLabel) {
+        setEditingMapLabel(createdLabel);
+        setMapLabelText(createdLabel.text);
+      }
+    } catch (cause: unknown) {
+      const message = cause instanceof Error ? cause.message : "No se pudo colocar la etiqueta.";
+      setError(message);
+    }
+  }
+
+  async function handleMoveMapLabel(labelId: number, posXPct: number, posYPct: number) {
+    try {
+      const nextData = await window.mapaMalvinas.updateMapLabelPosition({ labelId, posXPct, posYPct });
+      setData(nextData);
+      setError(null);
+    } catch (cause: unknown) {
+      const message = cause instanceof Error ? cause.message : "No se pudo mover la etiqueta.";
+      setError(message);
+    }
+  }
+
+  function handleOpenMapLabelEditor(label: MapLabel) {
+    setEditingMapLabel(label);
+    setMapLabelText(label.text);
+  }
+
+  async function handleSaveMapLabel() {
+    if (!editingMapLabel) {
+      return;
+    }
+
+    const text = mapLabelText.trim();
+
+    if (!text) {
+      setError("La etiqueta necesita un texto.");
+      return;
+    }
+
+    try {
+      const nextData = await window.mapaMalvinas.updateMapLabelContent({
+        labelId: editingMapLabel.id,
+        text
+      });
+      setData(nextData);
+      setEditingMapLabel(null);
+      setError(null);
+    } catch (cause: unknown) {
+      const message = cause instanceof Error ? cause.message : "No se pudo guardar la etiqueta.";
+      setError(message);
+    }
+  }
+
+  async function handleDeleteMapLabel(labelId: number) {
+    try {
+      const nextData = await window.mapaMalvinas.deleteMapLabel({ labelId });
+      setData(nextData);
+      setEditingMapLabel((current) => (current?.id === labelId ? null : current));
+      setError(null);
+    } catch (cause: unknown) {
+      const message = cause instanceof Error ? cause.message : "No se pudo borrar la etiqueta.";
+      setError(message);
+    }
+  }
+
+  async function handlePickContentResource(tipoContenido: MediaContentType) {
     const selectedPath = await window.mapaMalvinas.selectContentResource({
-      tipoContenido: contentType
+      tipoContenido
     });
 
     if (!selectedPath) {
       return;
     }
 
-    setContentResourcePath(selectedPath);
+    if (tipoContenido === "imagen") {
+      setContentImagePath(selectedPath);
+    } else {
+      setContentVideoPath(selectedPath);
+    }
   }
 
   async function handleSavePlacementContent() {
@@ -631,11 +785,10 @@ export function App() {
     try {
       const nextData = await window.mapaMalvinas.updateMapIconPlacementContent({
         placementId: editingPlacement.id,
-        pinKind: contentPinKind,
-        tipoContenido: contentType,
         tituloContenido: contentTitle.trim() || null,
         textoDescriptivo: contentText || null,
-        rutaRecursoLocal: contentType === "texto" ? null : contentResourcePath
+        rutaImagenLocal: contentImagePath,
+        rutaVideoLocal: contentVideoPath
       });
       setData(nextData);
       setEditingPlacement(null);
@@ -662,7 +815,8 @@ export function App() {
 
     setDayLayerSnapshot({
       drawingLines: activeDrawingLines,
-      placements: activeMapPlacements
+      placements: activeMapPlacements,
+      labels: activeMapLabels
     });
     setDayLayerTransitionProgress(0);
     setIsDayTransitionRunning(true);
@@ -718,9 +872,15 @@ export function App() {
       transitionId: existingTransition?.id ?? null,
       sourcePlacementId: sourcePlacement.id,
       targetPlacementId: targetPlacement.id,
-      waypointPointsPct: stripTransitionEndpoints(existingTransition?.pointsPct ?? [])
+      waypointPointsPct: stripTransitionEndpoints(existingTransition?.pointsPct ?? []),
+      pointSpeeds: normalizePointSpeeds(
+        existingTransition?.pointSpeeds ?? [],
+        Math.max(1, (existingTransition?.pointsPct.length ?? 4) / 2 - 1)
+      )
     });
     setIsDrawingPanelOpen(false);
+    setIsLabelsPanelOpen(false);
+    setDragLabelStyle(null);
     setIsDrawingEnabled(false);
     setError(null);
   }
@@ -731,9 +891,16 @@ export function App() {
         return current;
       }
 
+      const finalPointSpeed = current.pointSpeeds[current.pointSpeeds.length - 1] ?? DEFAULT_WAYPOINT_SPEED;
+
       return {
         ...current,
-        waypointPointsPct: [...current.waypointPointsPct, posXPct, posYPct]
+        waypointPointsPct: [...current.waypointPointsPct, posXPct, posYPct],
+        pointSpeeds: [
+          ...current.pointSpeeds.slice(0, -1),
+          DEFAULT_WAYPOINT_SPEED,
+          finalPointSpeed
+        ]
       };
     });
   }
@@ -761,9 +928,12 @@ export function App() {
         return current;
       }
 
+      const finalPointSpeed = current.pointSpeeds[current.pointSpeeds.length - 1] ?? DEFAULT_WAYPOINT_SPEED;
+
       return {
         ...current,
-        waypointPointsPct: current.waypointPointsPct.slice(0, -2)
+        waypointPointsPct: current.waypointPointsPct.slice(0, -2),
+        pointSpeeds: [...current.pointSpeeds.slice(0, -2), finalPointSpeed]
       };
     });
   }
@@ -774,9 +944,28 @@ export function App() {
         return current;
       }
 
+      const finalPointSpeed = current.pointSpeeds[current.pointSpeeds.length - 1] ?? DEFAULT_WAYPOINT_SPEED;
+
       return {
         ...current,
-        waypointPointsPct: []
+        waypointPointsPct: [],
+        pointSpeeds: [finalPointSpeed]
+      };
+    });
+  }
+
+  function handleTransitionSpeedChange(index: number, speed: number) {
+    setTransitionEditing((current) => {
+      if (!current) {
+        return current;
+      }
+
+      const nextSpeeds = normalizePointSpeeds(current.pointSpeeds, current.waypointPointsPct.length / 2 + 1);
+      nextSpeeds[index] = Math.min(100, Math.max(0, speed));
+
+      return {
+        ...current,
+        pointSpeeds: nextSpeeds
       };
     });
   }
@@ -806,7 +995,8 @@ export function App() {
       const nextData = await window.mapaMalvinas.upsertMapIconTransition({
         sourcePlacementId: sourcePlacement.id,
         targetPlacementId: targetPlacement.id,
-        pointsPct: fullPointsPct
+        pointsPct: fullPointsPct,
+        pointSpeeds: transitionEditing.pointSpeeds
       });
       setData(nextData);
       setTransitionEditing(null);
@@ -836,7 +1026,11 @@ export function App() {
     }
   }
 
-  async function handleCreateDrawingLine(pointsPct: number[], style: MapDrawingLineStyle) {
+  async function handleCreateDrawingLine(
+    pointsPct: number[],
+    style: MapDrawingLineStyle,
+    color: MapDrawingLineColor
+  ) {
     if (!activeDayId) {
       setError("Primero selecciona un dia.");
       return;
@@ -846,6 +1040,7 @@ export function App() {
       const nextData = await window.mapaMalvinas.createMapDrawingLine({
         dayId: activeDayId,
         style,
+        color,
         pointsPct
       });
       setData(nextData);
@@ -873,26 +1068,12 @@ export function App() {
     }
   }
 
-  function handleChangeContentType(nextType: "texto" | "imagen" | "video") {
-    setContentType(nextType);
-
-    if (nextType === "texto") {
-      setContentResourcePath(null);
-      return;
-    }
-
-    if (!contentResourcePath || isAllowedResource(contentResourcePath, nextType)) {
-      return;
-    }
-
-    setContentResourcePath(null);
-  }
-
   function handleOpenPlacementViewer(placement: MapIconPlacement) {
+    const hasTitle = Boolean(placement.tituloContenido?.trim());
     const hasText = Boolean(placement.textoDescriptivo?.trim());
-    const hasResource = Boolean(placement.recursoDataUrl);
+    const hasResource = Boolean(placement.imagenDataUrl || placement.videoDataUrl);
 
-    if (!hasText && !hasResource) {
+    if (!hasTitle && !hasText && !hasResource) {
       return;
     }
 
@@ -934,6 +1115,7 @@ export function App() {
     }
 
     persistActiveProfile(profileId);
+    setIsProfileAccessGranted(false);
     setMode("menu");
     setActiveDayId(data?.days[profile.mapState.startDay - 1]?.id ?? data?.days[0]?.id ?? null);
     setError(null);
@@ -981,11 +1163,12 @@ export function App() {
     const nextProfiles = [...profiles, nextProfile];
     persistProfiles(nextProfiles);
     persistActiveProfile(nextProfile.id);
+    setIsProfileAccessGranted(false);
     handleCloseProfileModal();
     setMode("menu");
   }
 
-  function handleDeleteEditingProfile() {
+  async function handleDeleteEditingProfile() {
     if (!editingProfileId) {
       return;
     }
@@ -996,16 +1179,22 @@ export function App() {
       return;
     }
 
-    const remainingProfiles = profiles.filter((profile) => profile.id !== editingProfileId);
-    const nextProfiles = remainingProfiles.length ? remainingProfiles : [createDefaultProfile()];
-    const nextActiveProfileId =
-      activeProfileId && nextProfiles.some((profile) => profile.id === activeProfileId)
-        ? activeProfileId
-        : nextProfiles[0]?.id ?? null;
+    try {
+      await window.mapaMalvinas.deleteProfileData(editingProfileId);
+      const remainingProfiles = profiles.filter((profile) => profile.id !== editingProfileId);
+      const nextProfiles = remainingProfiles.length ? remainingProfiles : [createDefaultProfile()];
+      const nextActiveProfileId =
+        activeProfileId && nextProfiles.some((profile) => profile.id === activeProfileId)
+          ? activeProfileId
+          : nextProfiles[0]?.id ?? null;
 
-    persistProfiles(nextProfiles);
-    persistActiveProfile(nextActiveProfileId);
-    handleCloseProfileModal();
+      persistProfiles(nextProfiles);
+      persistActiveProfile(nextActiveProfileId);
+      handleCloseProfileModal();
+    } catch (cause: unknown) {
+      const message = cause instanceof Error ? cause.message : "No se pudo eliminar el perfil.";
+      setProfileFormError(message);
+    }
   }
 
   function handleAvatarFileChange(event: ChangeEvent<HTMLInputElement>) {
@@ -1032,6 +1221,7 @@ export function App() {
   }
 
   function handleOpenEditPassword() {
+    setPasswordGateScope("edit");
     const hasPassword = Boolean(canUseLocalStorage() && window.localStorage.getItem(EDIT_PASSWORD_STORAGE_KEY));
     setPasswordGateMode(hasPassword ? "verify" : "create");
     setPasswordValue("");
@@ -1042,6 +1232,7 @@ export function App() {
   }
 
   function handleOpenChangePassword() {
+    setPasswordGateScope("edit");
     setPasswordGateMode("change");
     setPasswordValue("");
     setNewPasswordValue("");
@@ -1050,13 +1241,41 @@ export function App() {
     setShouldShakePassword(false);
   }
 
-  function handleClosePasswordGate() {
+  function handleOpenProfileAccess() {
+    setPasswordGateScope("profiles");
+    setPasswordGateMode("verify");
+    setPasswordValue("");
+    setNewPasswordValue("");
+    setConfirmPasswordValue("");
+    setPasswordError(null);
+    setShouldShakePassword(false);
+  }
+
+  function handleOpenChangeProfilesPassword() {
+    setPasswordGateScope("profiles");
+    setPasswordGateMode("change");
+    setPasswordValue("");
+    setNewPasswordValue("");
+    setConfirmPasswordValue("");
+    setPasswordError(null);
+    setShouldShakePassword(false);
+  }
+
+  function resetPasswordGate() {
     setPasswordGateMode(null);
     setPasswordValue("");
     setNewPasswordValue("");
     setConfirmPasswordValue("");
     setPasswordError(null);
     setShouldShakePassword(false);
+  }
+
+  function handleClosePasswordGate() {
+    if (passwordGateScope === "profiles" && mode === "profiles" && !isProfileAccessGranted && !activeProfileId) {
+      return;
+    }
+
+    resetPasswordGate();
   }
 
   function triggerPasswordError(message: string) {
@@ -1073,12 +1292,18 @@ export function App() {
       return;
     }
 
-    const storedPassword = window.localStorage.getItem(EDIT_PASSWORD_STORAGE_KEY);
+    const storageKey = passwordGateScope === "profiles" ? PROFILES_PASSWORD_STORAGE_KEY : EDIT_PASSWORD_STORAGE_KEY;
+    const storedPassword = window.localStorage.getItem(storageKey);
 
     if (passwordGateMode === "verify") {
       if (passwordValue === storedPassword) {
-        setMode("edit");
-        handleClosePasswordGate();
+        if (passwordGateScope === "profiles") {
+          setIsProfileAccessGranted(true);
+          setMode("profiles");
+        } else {
+          setMode("edit");
+        }
+        resetPasswordGate();
         return;
       }
 
@@ -1093,9 +1318,14 @@ export function App() {
         return;
       }
 
-      window.localStorage.setItem(EDIT_PASSWORD_STORAGE_KEY, newPasswordValue);
-      setMode("edit");
-      handleClosePasswordGate();
+      window.localStorage.setItem(storageKey, newPasswordValue);
+      if (passwordGateScope === "profiles") {
+        setIsProfileAccessGranted(true);
+        setMode("profiles");
+      } else {
+        setMode("edit");
+      }
+      resetPasswordGate();
       return;
     }
 
@@ -1111,20 +1341,23 @@ export function App() {
         return;
       }
 
-      window.localStorage.setItem(EDIT_PASSWORD_STORAGE_KEY, newPasswordValue);
-      handleClosePasswordGate();
+      window.localStorage.setItem(storageKey, newPasswordValue);
+      resetPasswordGate();
     }
   }
 
   function handleReturnToProfiles() {
-    setMode("profiles");
+    setIsProfileAccessGranted(false);
+    handleOpenProfileAccess();
     setIsIconsPanelOpen(false);
     setIsDrawingPanelOpen(false);
+    setIsLabelsPanelOpen(false);
+    setDragLabelStyle(null);
     setIsDrawingEnabled(false);
     setEditingPlacement(null);
+    setEditingMapLabel(null);
     setSelectedPlacement(null);
     setTransitionEditing(null);
-    handleClosePasswordGate();
   }
 
   function renderProfileAvatar(profile: MalvinasProfile, className = "profile-avatar") {
@@ -1164,7 +1397,7 @@ export function App() {
             {profileForm.avatar ? (
               <img alt="Avatar seleccionado" src={profileForm.avatar} />
             ) : (
-              <span style={{ backgroundColor: DEFAULT_PROFILE_COLOR }}>{getProfileInitials(profileForm.name)}</span>
+              <span style={{ backgroundColor: PROFILE_BORDER_GOLD }}>{getProfileInitials(profileForm.name)}</span>
             )}
           </div>
 
@@ -1182,62 +1415,6 @@ export function App() {
             Cambiar foto
             <input accept="image/png,image/jpeg,image/webp" onChange={handleAvatarFileChange} type="file" />
           </label>
-
-          <label className="profile-field">
-            <span>Dia de inicio</span>
-            <input
-              max={9}
-              min={1}
-              onChange={(event) =>
-                setProfileForm((current) => ({ ...current, startDay: Number(event.target.value) || 1 }))
-              }
-              type="number"
-              value={profileForm.startDay}
-            />
-          </label>
-
-          <div className="profile-field-grid">
-            <label className="profile-field">
-              <span>Longitud</span>
-              <input
-                onChange={(event) => setProfileForm((current) => ({ ...current, startLng: event.target.value }))}
-                type="number"
-                value={profileForm.startLng}
-              />
-            </label>
-            <label className="profile-field">
-              <span>Latitud</span>
-              <input
-                onChange={(event) => setProfileForm((current) => ({ ...current, startLat: event.target.value }))}
-                type="number"
-                value={profileForm.startLat}
-              />
-            </label>
-          </div>
-
-          <label className="profile-field">
-            <span>Zoom inicial</span>
-            <input
-              onChange={(event) => setProfileForm((current) => ({ ...current, startZoom: event.target.value }))}
-              step="0.1"
-              type="number"
-              value={profileForm.startZoom}
-            />
-          </label>
-
-          <div className="profile-color-row">
-            <span>Color de borde</span>
-            {[PROFILE_BORDER_GOLD, PROFILE_BORDER_BLUE].map((color) => (
-              <button
-                key={color}
-                aria-label={`Usar color ${color}`}
-                className={profileForm.avatarColor === color ? "profile-color-swatch active" : "profile-color-swatch"}
-                onClick={() => setProfileForm((current) => ({ ...current, avatarColor: color }))}
-                style={{ backgroundColor: color }}
-                type="button"
-              />
-            ))}
-          </div>
 
           {profileFormError ? <div className="password-gate-error">{profileFormError}</div> : null}
 
@@ -1262,6 +1439,7 @@ export function App() {
 
     const isCreate = passwordGateMode === "create";
     const isChange = passwordGateMode === "change";
+    const isProfilesPassword = passwordGateScope === "profiles";
 
     return (
       <section className="password-gate-modal" onClick={handleClosePasswordGate}>
@@ -1271,7 +1449,15 @@ export function App() {
           <span className="menu-corner bottom-left" />
           <span className="menu-corner bottom-right" />
           <div className="password-gate-eyebrow">Acceso restringido</div>
-          <h2>{isChange ? "Cambiar contrasena" : "Modo Edicion"}</h2>
+          <h2>
+            {isChange
+              ? isProfilesPassword
+                ? "Cambiar contrasena de perfiles"
+                : "Cambiar contrasena de edicion"
+              : isProfilesPassword
+                ? "Acceso a perfiles"
+                : "Modo Edicion"}
+          </h2>
           <div className="password-gate-divider" />
 
           {!isCreate ? (
@@ -1360,6 +1546,7 @@ export function App() {
 
         {storageWarning ? <div className="error-toast">{storageWarning}</div> : null}
         {renderProfileModal()}
+        {renderPasswordGate()}
       </main>
     );
   }
@@ -1368,7 +1555,7 @@ export function App() {
     return (
       <main className="profile-shell">
         <button className="profile-back-button" onClick={() => setMode("profiles")} type="button">
-          &lt;
+          &lsaquo; Regresar
         </button>
 
         <section className="profile-picker admin">
@@ -1394,9 +1581,14 @@ export function App() {
             </button>
           </div>
 
-          <button className="manage-profiles-button" onClick={handleOpenChangePassword} type="button">
-            Cambiar contrasena de edicion
-          </button>
+          <div className="profile-password-actions">
+            <button className="manage-profiles-button" onClick={handleOpenChangePassword} type="button">
+              Cambiar contrasena de edicion
+            </button>
+            <button className="manage-profiles-button" onClick={handleOpenChangeProfilesPassword} type="button">
+              Cambiar contrasena de perfiles
+            </button>
+          </div>
         </section>
 
         {storageWarning ? <div className="error-toast">{storageWarning}</div> : null}
@@ -1409,9 +1601,6 @@ export function App() {
   if (mode === "menu") {
     return (
       <main className="menu-shell">
-        <button className="profiles-return-button" onClick={handleReturnToProfiles} type="button">
-          Perfiles
-        </button>
         <div className="menu-institutional">Memorial Heroes de Malvinas</div>
         <section className="menu-card">
           <span className="menu-corner top-left" />
@@ -1419,7 +1608,7 @@ export function App() {
           <span className="menu-corner bottom-left" />
           <span className="menu-corner bottom-right" />
           <div className="menu-eyebrow">MUSEO MALVINAS &middot; AYAS</div>
-          <h1>Malvinas<br />Dia a Dia</h1>
+          <h1>Malvinas<br />Dia X Dia</h1>
           <div className="menu-divider" />
           <p>{activeProfile ? `Perfil activo: ${activeProfile.name}` : "Selecciona el modo de ingreso"}</p>
 
@@ -1429,6 +1618,9 @@ export function App() {
             </button>
             <button className="menu-button secondary" onClick={handleOpenEditPassword} type="button">
               Modo Edicion
+            </button>
+            <button className="menu-button secondary" onClick={handleReturnToProfiles} type="button">
+              Perfiles
             </button>
           </div>
         </section>
@@ -1444,10 +1636,6 @@ export function App() {
   return (
     <main className="experience-shell">
       <div className="profile-topbar-left">
-        <button className="profiles-return-button map" onClick={handleReturnToProfiles} type="button">
-          Perfiles
-        </button>
-
         {activeProfile ? (
           <div
             aria-label={`Perfil activo: ${activeProfile.name}`}
@@ -1483,7 +1671,10 @@ export function App() {
               setMode("view");
               setIsIconsPanelOpen(false);
               setIsDrawingPanelOpen(false);
+              setIsLabelsPanelOpen(false);
+              setDragLabelStyle(null);
               setIsDrawingEnabled(false);
+              setEditingMapLabel(null);
             }}
             type="button"
           >
@@ -1496,8 +1687,11 @@ export function App() {
             setMode("menu");
             setIsIconsPanelOpen(false);
             setIsDrawingPanelOpen(false);
+            setIsLabelsPanelOpen(false);
+            setDragLabelStyle(null);
             setIsDrawingEnabled(false);
             setEditingPlacement(null);
+            setEditingMapLabel(null);
           }}
           type="button"
         >
@@ -1510,23 +1704,31 @@ export function App() {
           activeDay={activeDay}
           animatedPlacementPositions={animatedPlacementPositions}
           drawingLines={activeDrawingLines}
+          drawingLineColor={drawingLineColor}
           drawingLineStyle={drawingLineStyle}
           drawingTool={drawingTool}
           dragLibraryIcon={isEditMode ? dragLibraryIcon : null}
+          dragLabelStyle={isEditMode ? dragLabelStyle : null}
           isDrawingEnabled={isDrawingEnabled}
           isEditable={isEditMode}
           isTransitionEditing={Boolean(transitionEditing)}
           onActivatePlacement={isReadOnlyMode ? handleOpenPlacementViewer : undefined}
           onAddTransitionWaypoint={handleAddTransitionWaypoint}
           onCreateDrawingLine={handleCreateDrawingLine}
+          onCreateMapLabel={handleCreateMapLabel}
           onCreatePlacement={handleCreatePlacement}
+          onDeleteMapLabel={handleDeleteMapLabel}
           onDeletePlacement={handleDeletePlacement}
+          onEditMapLabel={handleOpenMapLabelEditor}
           onEditPlacement={handleOpenPlacementEditor}
           onEditTransition={handleStartTransitionEdit}
+          onMoveMapLabel={handleMoveMapLabel}
           onMovePlacement={handleMovePlacement}
           onMoveTransitionWaypoint={handleMoveTransitionWaypoint}
           placements={activeMapPlacements}
+          labels={activeMapLabels}
           previousDrawingLines={dayLayerSnapshot?.drawingLines ?? []}
+          previousLabels={dayLayerSnapshot?.labels ?? []}
           previousPlacements={dayLayerSnapshot?.placements ?? []}
           transitionProgress={dayLayerTransitionProgress}
           transitionEditorSourcePlacement={transitionSourcePlacement}
@@ -1536,14 +1738,8 @@ export function App() {
       </div>
 
       <section className="date-chip">
-        <span>{isEditMode ? `Modo Edicion - Dia ${activeDayNumber || "-"}` : `Dia ${activeDayNumber || "-"}`}</span>
         <strong>{activeDay?.etiquetaFecha ?? "Sin dia activo"}</strong>
       </section>
-
-      <div className="map-brand-badge">
-        <strong>Museo Malvinas</strong>
-        <span>Mapa historico &middot; 1982</span>
-      </div>
 
       {isEditMode && editingPlacement ? (
         <section className="content-editor-modal">
@@ -1552,47 +1748,6 @@ export function App() {
               <strong>Contenido del icono</strong>
               <button className="content-editor-close" onClick={() => setEditingPlacement(null)} type="button">
                 x
-              </button>
-            </div>
-
-            <div className="content-type-row">
-              <button
-                className={contentType === "texto" ? "content-type-button active" : "content-type-button"}
-                onClick={() => handleChangeContentType("texto")}
-                type="button"
-              >
-                Texto
-              </button>
-              <button
-                className={contentType === "imagen" ? "content-type-button active" : "content-type-button"}
-                onClick={() => handleChangeContentType("imagen")}
-                type="button"
-              >
-                Imagen
-              </button>
-              <button
-                className={contentType === "video" ? "content-type-button active" : "content-type-button"}
-                onClick={() => handleChangeContentType("video")}
-                type="button"
-              >
-                Video
-              </button>
-            </div>
-
-            <div className="content-type-row pin-kind-row">
-              <button
-                className={contentPinKind === "land" ? "content-type-button active" : "content-type-button"}
-                onClick={() => setContentPinKind("land")}
-                type="button"
-              >
-                Terrestre / AR
-              </button>
-              <button
-                className={contentPinKind === "naval" ? "content-type-button active" : "content-type-button"}
-                onClick={() => setContentPinKind("naval")}
-                type="button"
-              >
-                Naval / UK
               </button>
             </div>
 
@@ -1611,19 +1766,66 @@ export function App() {
               value={contentText}
             />
 
-            {contentType !== "texto" ? (
-              <div className="content-resource-row">
-                <button className="content-resource-button" onClick={() => void handlePickContentResource()} type="button">
-                  Cargar {contentType}
-                </button>
-                <span className="content-resource-name" title={contentResourcePath ?? ""}>
-                  {contentResourcePath ? contentResourcePath.split("\\").pop() : "Sin archivo"}
-                </span>
-              </div>
-            ) : null}
+            <div className="content-resource-row">
+              <button
+                className="content-resource-button"
+                onClick={() => void handlePickContentResource("imagen")}
+                type="button"
+              >
+                Cargar imagen
+              </button>
+              <span className="content-resource-name" title={contentImagePath ?? ""}>
+                {contentImagePath ? contentImagePath.split(/[\\/]/).pop() : "Sin archivo"}
+              </span>
+            </div>
+
+            <div className="content-resource-row">
+              <button
+                className="content-resource-button"
+                onClick={() => void handlePickContentResource("video")}
+                type="button"
+              >
+                Cargar video
+              </button>
+              <span className="content-resource-name" title={contentVideoPath ?? ""}>
+                {contentVideoPath ? contentVideoPath.split(/[\\/]/).pop() : "Sin archivo"}
+              </span>
+            </div>
 
             <button className="content-save-button" onClick={() => void handleSavePlacementContent()} type="button">
               Guardar
+            </button>
+          </div>
+        </section>
+      ) : null}
+
+      {isEditMode && editingMapLabel ? (
+        <section className="content-editor-modal">
+          <div className="content-editor-card map-label-editor-card">
+            <div className="content-editor-header">
+              <strong>Editar etiqueta</strong>
+              <button className="content-editor-close" onClick={() => setEditingMapLabel(null)} type="button">
+                x
+              </button>
+            </div>
+
+            <textarea
+              autoFocus
+              className="map-label-textarea"
+              maxLength={120}
+              onChange={(event) => setMapLabelText(event.target.value)}
+              onKeyDown={(event) => {
+                if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+                  void handleSaveMapLabel();
+                }
+              }}
+              placeholder="Texto de la etiqueta"
+              value={mapLabelText}
+            />
+
+            <span className="map-label-character-count">{mapLabelText.length}/120</span>
+            <button className="content-save-button" onClick={() => void handleSaveMapLabel()} type="button">
+              Guardar etiqueta
             </button>
           </div>
         </section>
@@ -1671,6 +1873,54 @@ export function App() {
         </aside>
       ) : null}
 
+      {isEditMode && isLabelsPanelOpen ? (
+        <aside className="labels-panel">
+          <div className="labels-panel-header">
+            <strong>ETIQUETAS</strong>
+            <button
+              className="labels-close"
+              onClick={() => {
+                setIsLabelsPanelOpen(false);
+                setDragLabelStyle(null);
+              }}
+              type="button"
+            >
+              x
+            </button>
+          </div>
+
+          <div className="label-template-list">
+            {MAP_LABEL_STYLES.map((style) => (
+              <button
+                aria-label={`Etiqueta ${MAP_LABEL_STYLE_NAMES[style]}`}
+                aria-pressed={dragLabelStyle === style}
+                className={dragLabelStyle === style ? "label-template-card active" : "label-template-card"}
+                draggable
+                key={style}
+                onClick={() => setDragLabelStyle((current) => (current === style ? null : style))}
+                onDragEnd={() => setDragLabelStyle(null)}
+                onDragStart={(event) => {
+                  event.dataTransfer.effectAllowed = "copy";
+                  event.dataTransfer.setData("text/plain", `map-label-${style}`);
+                  setDragLabelStyle(style);
+                }}
+                type="button"
+              >
+                <span className={`map-label-shell ${style} label-template-preview`}>
+                  <span className="map-label-face">{MAP_LABEL_STYLE_NAMES[style]}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+
+          <p className="labels-panel-hint">
+            {dragLabelStyle
+              ? "Haz clic en el mapa para colocarla."
+              : "Selecciona o arrastra la etiqueta hacia el mapa."}
+          </p>
+        </aside>
+      ) : null}
+
       {isEditMode && isDrawingPanelOpen ? (
         <aside ref={drawingPanelRef} className="drawing-panel">
           <div className="drawing-panel-header">
@@ -1678,6 +1928,23 @@ export function App() {
             <button className="drawing-close" onClick={() => setIsDrawingPanelOpen(false)} type="button">
               x
             </button>
+          </div>
+
+          <div className="drawing-color-label">Color del trazo</div>
+          <div aria-label="Color del trazo" className="drawing-color-list" role="group">
+            {DRAWING_COLOR_OPTIONS.map((option) => (
+              <button
+                aria-label={option.label}
+                aria-pressed={drawingLineColor === option.value}
+                className={drawingLineColor === option.value ? "drawing-color-button active" : "drawing-color-button"}
+                key={option.value}
+                onClick={() => setDrawingLineColor(option.value)}
+                title={option.label}
+                type="button"
+              >
+                <span className="drawing-color-swatch" style={{ backgroundColor: option.hex }} />
+              </button>
+            ))}
           </div>
 
           <div className="drawing-style-list">
@@ -1774,7 +2041,31 @@ export function App() {
           </div>
 
           <div className="transition-points-count">
-            Puntos intermedios: {transitionEditing.waypointPointsPct.length / 2}
+            Puntos de trayectoria: {transitionEditing.waypointPointsPct.length / 2 + 1}
+          </div>
+
+          <div className="transition-speed-list">
+            {Array.from({ length: transitionEditing.waypointPointsPct.length / 2 + 1 }, (_, index) => (
+              <label className="transition-speed-item" key={`transition-speed-${index}`}>
+                <span className="transition-speed-title">
+                  Punto {String(index + 1).padStart(2, "0")}
+                  {index === transitionEditing.waypointPointsPct.length / 2 ? <small>Final</small> : null}
+                </span>
+                <input
+                  aria-label={`Velocidad del punto ${index + 1}`}
+                  max={100}
+                  min={0}
+                  onChange={(event) => handleTransitionSpeedChange(index, Number(event.target.value))}
+                  step={5}
+                  type="range"
+                  value={transitionEditing.pointSpeeds[index] ?? DEFAULT_WAYPOINT_SPEED}
+                />
+                <span className="transition-speed-extremes">
+                  <span>Lento</span>
+                  <span>Rapido</span>
+                </span>
+              </label>
+            ))}
           </div>
 
           <button className="transition-action-button" onClick={handleUndoTransitionWaypoint} type="button">
@@ -1812,10 +2103,17 @@ export function App() {
           >
             &#9639;
           </button>
+          <button
+            aria-label="Abrir panel de etiquetas"
+            className={isLabelsPanelOpen ? "labels-toggle active" : "labels-toggle"}
+            onClick={handleToggleLabelsPanel}
+            title="Abrir panel de etiquetas"
+            type="button"
+          >
+            <span className="labels-toggle-symbol">A</span>
+          </button>
         </>
       ) : null}
-
-      {isReadOnlyMode && !activeDay ? <div className="view-empty">No hay dias creados para visualizar.</div> : null}
 
       {isReadOnlyMode && selectedPlacement ? (
         <section
@@ -1834,25 +2132,31 @@ export function App() {
               </button>
             </div>
 
-            <div className="content-viewer-body">
-              {selectedPlacement.tipoContenido === "video" && selectedPlacement.recursoDataUrl ? (
-                <div className="content-viewer-media-frame">
-                  <video className="content-viewer-media" controls src={selectedPlacement.recursoDataUrl} />
+            <div
+              className={
+                selectedPlacement.imagenDataUrl || selectedPlacement.videoDataUrl
+                  ? "content-viewer-body"
+                  : "content-viewer-body text-only"
+              }
+            >
+              {selectedPlacement.imagenDataUrl || selectedPlacement.videoDataUrl ? (
+                <div className="content-viewer-media-column">
+                  {selectedPlacement.imagenDataUrl ? (
+                    <figure className="content-viewer-media-frame">
+                      <img
+                        alt={selectedPlacement.nombreIcono ?? "Imagen del contenido"}
+                        className="content-viewer-media"
+                        src={selectedPlacement.imagenDataUrl}
+                      />
+                    </figure>
+                  ) : null}
+
+                  {selectedPlacement.videoDataUrl ? (
+                    <div className="content-viewer-media-frame">
+                      <video className="content-viewer-media" controls src={selectedPlacement.videoDataUrl} />
+                    </div>
+                  ) : null}
                 </div>
-              ) : null}
-
-              {selectedPlacement.tipoContenido === "imagen" && selectedPlacement.recursoDataUrl ? (
-                <figure className="content-viewer-media-frame">
-                  <img
-                    alt={selectedPlacement.nombreIcono ?? "Imagen del contenido"}
-                    className="content-viewer-media"
-                    src={selectedPlacement.recursoDataUrl}
-                  />
-                </figure>
-              ) : null}
-
-              {selectedPlacement.tipoContenido === "texto" || !selectedPlacement.recursoDataUrl ? (
-                <div className="content-viewer-text-only" />
               ) : null}
 
               <div className="content-viewer-text">
@@ -1872,38 +2176,6 @@ export function App() {
   );
 }
 
-const IMAGE_EXTENSIONS = new Set([
-  ".jpg",
-  ".jpeg",
-  ".png",
-  ".gif",
-  ".bmp",
-  ".webp",
-  ".svg",
-  ".avif",
-  ".tif",
-  ".tiff",
-  ".ico"
-]);
-
-const VIDEO_EXTENSIONS = new Set([
-  ".mp4",
-  ".webm",
-  ".mov",
-  ".m4v",
-  ".avi",
-  ".mkv",
-  ".wmv",
-  ".flv",
-  ".mpeg",
-  ".mpg",
-  ".ts",
-  ".mts",
-  ".m2ts",
-  ".3gp",
-  ".ogv"
-]);
-
 function getNextDay(days: BootstrapData["days"], dayId: number) {
   const currentIndex = days.findIndex((day) => day.id === dayId);
 
@@ -1922,14 +2194,19 @@ function stripTransitionEndpoints(pointsPct: number[]) {
   return pointsPct.slice(2, -2);
 }
 
-function reversePointsPct(pointsPct: number[]) {
-  const reversed: number[] = [];
+function normalizePointSpeeds(speeds: number[], pointCount: number) {
+  const normalizedSpeeds: number[] = [];
 
-  for (let index = pointsPct.length - 2; index >= 0; index -= 2) {
-    reversed.push(pointsPct[index], pointsPct[index + 1]);
+  for (let index = 0; index < pointCount; index += 1) {
+    const speed = speeds[index];
+    normalizedSpeeds.push(
+      Number.isFinite(speed)
+        ? Math.min(100, Math.max(0, speed))
+        : normalizedSpeeds[index - 1] ?? DEFAULT_WAYPOINT_SPEED
+    );
   }
 
-  return reversed;
+  return normalizedSpeeds;
 }
 
 function getAdjacentDayDirection(days: BootstrapData["days"], fromDayId: number, toDayId: number) {
@@ -1951,82 +2228,104 @@ function getAdjacentDayDirection(days: BootstrapData["days"], fromDayId: number,
   return 0;
 }
 
-function getPointAlongPolyline(pointsPct: number[], progress: number) {
+type TimedTransitionSegment = {
+  startX: number;
+  startY: number;
+  endX: number;
+  endY: number;
+  durationMs: number;
+};
+
+type TimedTransitionPath = {
+  segments: TimedTransitionSegment[];
+  totalDurationMs: number;
+  finalPoint: { x: number; y: number } | null;
+};
+
+function getSpeedDurationMultiplier(speed: number) {
+  const normalizedSpeed = Math.min(100, Math.max(0, speed));
+
+  if (normalizedSpeed <= 50) {
+    return 3 - 2 * (normalizedSpeed / 50);
+  }
+
+  return 1 - 0.55 * ((normalizedSpeed - 50) / 50);
+}
+
+function createTimedTransitionPath(pointsPct: number[], pointSpeeds: number[], shouldReverse: boolean): TimedTransitionPath {
   if (pointsPct.length < 4) {
-    return null;
+    return { segments: [], totalDurationMs: 0, finalPoint: null };
   }
 
-  const segments: Array<{ startX: number; startY: number; endX: number; endY: number; length: number }> = [];
+  const points = Array.from({ length: pointsPct.length / 2 }, (_, index) => ({
+    x: pointsPct[index * 2],
+    y: pointsPct[index * 2 + 1]
+  }));
+  const segmentSpeeds = normalizePointSpeeds(pointSpeeds, points.length - 1);
+
+  if (shouldReverse) {
+    points.reverse();
+    segmentSpeeds.reverse();
+  }
+
+  const segmentLengths = points.slice(0, -1).map((point, index) =>
+    Math.hypot(points[index + 1].x - point.x, points[index + 1].y - point.y)
+  );
   let totalLength = 0;
-
-  for (let index = 0; index < pointsPct.length - 2; index += 2) {
-    const startX = pointsPct[index];
-    const startY = pointsPct[index + 1];
-    const endX = pointsPct[index + 2];
-    const endY = pointsPct[index + 3];
-    const length = Math.hypot(endX - startX, endY - startY);
-
-    segments.push({ startX, startY, endX, endY, length });
+  segmentLengths.forEach((length) => {
     totalLength += length;
-  }
+  });
 
-  if (!segments.length || totalLength === 0) {
+  const segments = points.slice(0, -1).map((point, index) => {
+    const lengthShare = totalLength > 0 ? segmentLengths[index] / totalLength : 1 / (points.length - 1);
+    const durationMs = Math.max(
+      40,
+      TRANSITION_ANIMATION_MS * lengthShare * getSpeedDurationMultiplier(segmentSpeeds[index])
+    );
+
     return {
-      x: pointsPct[0],
-      y: pointsPct[1]
+      startX: point.x,
+      startY: point.y,
+      endX: points[index + 1].x,
+      endY: points[index + 1].y,
+      durationMs
     };
+  });
+
+  return {
+    segments,
+    totalDurationMs: segments.reduce((total, segment) => total + segment.durationMs, 0),
+    finalPoint: points.length ? points[points.length - 1] : null
+  };
+}
+
+function getTimedTransitionState(path: TimedTransitionPath, elapsedMs: number) {
+  if (!path.segments.length || !path.finalPoint) {
+    return { point: path.finalPoint, isComplete: true };
   }
 
-  const targetLength = totalLength * progress;
-  let traversed = 0;
+  let elapsedBeforeSegment = 0;
 
-  for (const segment of segments) {
-    const nextTraversed = traversed + segment.length;
+  for (const segment of path.segments) {
+    const segmentEndTime = elapsedBeforeSegment + segment.durationMs;
 
-    if (targetLength <= nextTraversed) {
-      const localProgress = segment.length === 0 ? 0 : (targetLength - traversed) / segment.length;
-
+    if (elapsedMs < segmentEndTime) {
+      const progress = Math.min(1, Math.max(0, (elapsedMs - elapsedBeforeSegment) / segment.durationMs));
       return {
-        x: segment.startX + (segment.endX - segment.startX) * localProgress,
-        y: segment.startY + (segment.endY - segment.startY) * localProgress
+        point: {
+          x: segment.startX + (segment.endX - segment.startX) * progress,
+          y: segment.startY + (segment.endY - segment.startY) * progress
+        },
+        isComplete: false
       };
     }
 
-    traversed = nextTraversed;
+    elapsedBeforeSegment = segmentEndTime;
   }
 
-  return {
-    x: pointsPct[pointsPct.length - 2],
-    y: pointsPct[pointsPct.length - 1]
-  };
+  return { point: path.finalPoint, isComplete: elapsedMs >= path.totalDurationMs };
 }
 
 function easeInOutCubic(progress: number) {
   return progress < 0.5 ? 4 * progress * progress * progress : 1 - Math.pow(-2 * progress + 2, 3) / 2;
-}
-
-function getFileExtension(filePath: string) {
-  const normalizedPath = filePath.toLowerCase();
-  const lastDotIndex = normalizedPath.lastIndexOf(".");
-
-  if (lastDotIndex === -1) {
-    return "";
-  }
-
-  return normalizedPath.slice(lastDotIndex);
-}
-
-function isAllowedResource(filePath: string, tipoContenido: MediaContentType) {
-  const extension = getFileExtension(filePath);
-  const allowedExtensions = tipoContenido === "imagen" ? IMAGE_EXTENSIONS : VIDEO_EXTENSIONS;
-  return allowedExtensions.has(extension);
-}
-
-function isNavalPlacement(placement: MapIconPlacement) {
-  if (placement.pinKind) {
-    return placement.pinKind === "naval";
-  }
-
-  const text = `${placement.nombreIcono ?? ""} ${placement.tituloContenido ?? ""} ${placement.textoDescriptivo ?? ""}`.toLowerCase();
-  return ["ara", "naval", "buque", "barco", "crucero", "submarino", "fragata"].some((keyword) => text.includes(keyword));
 }
