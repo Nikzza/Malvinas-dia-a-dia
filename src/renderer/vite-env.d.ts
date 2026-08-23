@@ -12,12 +12,14 @@ import type {
   DeleteMapIconPlacementPayload,
   DeleteMapLabelPayload,
   DeleteDayIconPayload,
+  MoveDayPayload,
   SelectContentResourcePayload,
   UpsertMapIconTransitionPayload,
   UpdateMapIconPlacementContentPayload,
   UpdateMapIconPlacementPayload,
   UpdateMapLabelContentPayload,
   UpdateMapLabelPositionPayload,
+  UpdateDayMapViewPayload,
   UpdateDayPayload
 } from "../shared/types/ipc";
 
@@ -29,6 +31,8 @@ declare global {
       createDay: (payload: CreateDayPayload) => Promise<BootstrapData>;
       deleteDay: (dayId: number) => Promise<BootstrapData>;
       updateDay: (payload: UpdateDayPayload) => Promise<BootstrapData>;
+      moveDay: (payload: MoveDayPayload) => Promise<BootstrapData>;
+      updateDayMapView: (payload: UpdateDayMapViewPayload) => Promise<BootstrapData>;
       selectIconPng: () => Promise<string | null>;
       createDayIcon: (payload: CreateDayIconPayload) => Promise<BootstrapData>;
       deleteDayIcon: (payload: DeleteDayIconPayload) => Promise<BootstrapData>;

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { Circle, Layer, Line, Stage } from "react-konva";
 import type Konva from "konva";
 import type {
@@ -20,6 +20,7 @@ type MapDrawingLayerProps = {
   onCreateLine: (pointsPct: number[], style: MapDrawingLineStyle, color: MapDrawingLineColor) => Promise<void>;
   linesOpacity?: number;
   linesRevealProgress?: number;
+  selectedLineId?: number | null;
 };
 
 const DRAWING_LINE_COLOR_HEX: Record<MapDrawingLineColor, string> = {
@@ -141,7 +142,8 @@ export function MapDrawingLayer({
   drawingTool,
   onCreateLine,
   linesOpacity = 1,
-  linesRevealProgress = 1
+  linesRevealProgress = 1,
+  selectedLineId = null
 }: MapDrawingLayerProps) {
   const [currentPointsPct, setCurrentPointsPct] = useState<number[]>([]);
   const [isPointerDown, setIsPointerDown] = useState(false);
@@ -349,19 +351,37 @@ export function MapDrawingLayer({
       width={width}
     >
       <Layer listening={false}>
-        {lines.map((line) => (
-          <Line
-            key={line.id}
-            dash={getDash(line.style)}
-            lineCap="round"
-            lineJoin="round"
-            listening={false}
-            opacity={linesOpacity}
-            points={getPartialCanvasPoints(toCanvasPoints(line.pointsPct, width, height), linesRevealProgress)}
-            stroke={DRAWING_LINE_COLOR_HEX[line.color]}
-            strokeWidth={6}
-          />
-        ))}
+        {lines.map((line) => {
+          const points = getPartialCanvasPoints(toCanvasPoints(line.pointsPct, width, height), linesRevealProgress);
+          const isSelected = line.id === selectedLineId;
+
+          return (
+            <Fragment key={line.id}>
+              {isSelected ? (
+                <Line
+                  dash={getDash(line.style)}
+                  lineCap="round"
+                  lineJoin="round"
+                  listening={false}
+                  opacity={linesOpacity * 0.9}
+                  points={points}
+                  stroke="#81D2F7"
+                  strokeWidth={12}
+                />
+              ) : null}
+              <Line
+                dash={getDash(line.style)}
+                lineCap="round"
+                lineJoin="round"
+                listening={false}
+                opacity={linesOpacity}
+                points={points}
+                stroke={DRAWING_LINE_COLOR_HEX[line.color]}
+                strokeWidth={6}
+              />
+            </Fragment>
+          );
+        })}
         {renderedCurrentPoints.length >= 4 ? (
           <Line
             dash={getDash(lineStyle)}

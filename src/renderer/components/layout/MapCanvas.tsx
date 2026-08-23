@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import type {
   DragEvent as ReactDragEvent,
   MouseEvent as ReactMouseEvent,
@@ -28,6 +28,7 @@ type MapCanvasProps = {
   dragLibraryIcon: DayIcon | null;
   dragLabelStyle: MapLabelStyle | null;
   isDrawingEnabled: boolean;
+  isDrawingLineSelectionEnabled: boolean;
   isEditable: boolean;
   isTransitionEditing: boolean;
   onActivatePlacement?: (placement: MapIconPlacement) => void;
@@ -44,6 +45,7 @@ type MapCanvasProps = {
   onMoveMapLabel: (labelId: number, posXPct: number, posYPct: number) => Promise<void>;
   onMovePlacement: (placementId: number, posXPct: number, posYPct: number) => Promise<void>;
   onMoveTransitionWaypoint: (index: number, posXPct: number, posYPct: number) => void;
+  onSelectDrawingLine: (lineId: number | null) => void;
   onDeletePlacement: (placementId: number) => Promise<void>;
   onEditPlacement: (placement: MapIconPlacement) => void;
   onEditTransition: (placement: MapIconPlacement) => void;
@@ -52,10 +54,22 @@ type MapCanvasProps = {
   previousDrawingLines: MapDrawingLine[];
   previousLabels: MapLabel[];
   previousPlacements: MapIconPlacement[];
+  selectedDrawingLineId: number | null;
   transitionProgress: number;
   transitionEditorSourcePlacement: MapIconPlacement | null;
   transitionEditorTargetPlacement: MapIconPlacement | null;
   transitionWaypointPointsPct: number[];
+};
+
+export type MapViewState = {
+  longitude: number;
+  latitude: number;
+  zoom: number;
+};
+
+export type MapCanvasHandle = {
+  getCurrentView: () => MapViewState | null;
+  goToView: (view: MapViewState) => void;
 };
 
 type ScreenPoint = {
@@ -67,6 +81,7 @@ const MAX_MERCATOR_LATITUDE = 85.05112878;
 const MALVINAS_CENTER: [number, number] = [-59.5236, -51.7963];
 const MAP_TILE_SIZE = 256;
 const MAP_MIN_ZOOM_PADDING = 0.02;
+const SAVED_VIEW_TRANSITION_MS = 900;
 const MAPLIBRE_STYLE: StyleSpecification = {
   version: 8,
   sources: {
@@ -86,6 +101,33 @@ const MAPLIBRE_STYLE: StyleSpecification = {
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
+}
+
+function getDistanceToSegment(
+  pointX: number,
+  pointY: number,
+  startX: number,
+  startY: number,
+  endX: number,
+  endY: number
+) {
+  const deltaX = endX - startX;
+  const deltaY = endY - startY;
+  const segmentLengthSquared = deltaX * deltaX + deltaY * deltaY;
+
+  if (segmentLengthSquared === 0) {
+    return Math.hypot(pointX - startX, pointY - startY);
+  }
+
+  const projection = clamp(
+    ((pointX - startX) * deltaX + (pointY - startY) * deltaY) / segmentLengthSquared,
+    0,
+    1
+  );
+  const nearestX = startX + projection * deltaX;
+  const nearestY = startY + projection * deltaY;
+
+  return Math.hypot(pointX - nearestX, pointY - nearestY);
 }
 
 function getMinimumZoomForViewport(width: number) {
@@ -161,7 +203,7 @@ function toSvgPolylinePoints(pointsPct: number[], width: number, height: number)
   return points.join(" ");
 }
 
-export function MapCanvas({
+export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function MapCanvas({
   activeDay,
   animatedPlacementPositions,
   drawingLines,
@@ -171,6 +213,7 @@ export function MapCanvas({
   dragLibraryIcon,
   dragLabelStyle,
   isDrawingEnabled,
+  isDrawingLineSelectionEnabled,
   isEditable,
   isTransitionEditing,
   onActivatePlacement,
@@ -186,16 +229,18 @@ export function MapCanvas({
   onMoveMapLabel,
   onMovePlacement,
   onMoveTransitionWaypoint,
+  onSelectDrawingLine,
   placements,
   labels,
   previousDrawingLines,
   previousLabels,
   previousPlacements,
+  selectedDrawingLineId,
   transitionProgress,
   transitionEditorSourcePlacement,
   transitionEditorTargetPlacement,
   transitionWaypointPointsPct
-}: MapCanvasProps) {
+}: MapCanvasProps, ref) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<maplibregl.Map | null>(null);
@@ -203,6 +248,40 @@ export function MapCanvas({
 
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
   const [mapViewVersion, setMapViewVersion] = useState(0);
+  const [isMapReady, setIsMapReady] = useState(false);
+
+  useImperativeHandle(ref, () => ({
+    getCurrentView: () => {
+      const currentMap = mapInstanceRef.current;
+
+      if (!currentMap) {
+        return null;
+      }
+
+      const center = currentMap.getCenter();
+
+      return {
+        longitude: center.lng,
+        latitude: center.lat,
+        zoom: currentMap.getZoom()
+      };
+    },
+    goToView: (view) => {
+      const currentMap = mapInstanceRef.current;
+
+      if (!currentMap) {
+        return;
+      }
+
+      currentMap.stop();
+      currentMap.easeTo({
+        center: [view.longitude, view.latitude],
+        zoom: view.zoom,
+        duration: SAVED_VIEW_TRANSITION_MS,
+        essential: true
+      });
+    }
+  }), []);
 
   useEffect(() => {
     const viewport = viewportRef.current;
@@ -249,14 +328,18 @@ export function MapCanvas({
     });
 
     const syncOverlay = () => setMapViewVersion((current) => current + 1);
-    map.on("load", syncOverlay);
+    const handleLoad = () => {
+      setIsMapReady(true);
+      syncOverlay();
+    };
+    map.on("load", handleLoad);
     map.on("move", syncOverlay);
     map.on("zoom", syncOverlay);
     map.on("resize", syncOverlay);
     mapInstanceRef.current = map;
 
     return () => {
-      map.off("load", syncOverlay);
+      map.off("load", handleLoad);
       map.off("move", syncOverlay);
       map.off("zoom", syncOverlay);
       map.off("resize", syncOverlay);
@@ -264,6 +347,40 @@ export function MapCanvas({
       mapInstanceRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    if (
+      isEditable ||
+      !isMapReady ||
+      !activeDay ||
+      activeDay.initialMapLongitude === null ||
+      activeDay.initialMapLatitude === null ||
+      activeDay.initialMapZoom === null
+    ) {
+      return;
+    }
+
+    const currentMap = mapInstanceRef.current;
+
+    if (!currentMap) {
+      return;
+    }
+
+    currentMap.stop();
+    currentMap.easeTo({
+      center: [activeDay.initialMapLongitude, activeDay.initialMapLatitude],
+      zoom: activeDay.initialMapZoom,
+      duration: SAVED_VIEW_TRANSITION_MS,
+      essential: true
+    });
+  }, [
+    activeDay?.id,
+    activeDay?.initialMapLatitude,
+    activeDay?.initialMapLongitude,
+    activeDay?.initialMapZoom,
+    isEditable,
+    isMapReady
+  ]);
 
   useEffect(() => {
     const animationFrame = window.requestAnimationFrame(() => {
@@ -457,6 +574,44 @@ export function MapCanvas({
     const target = event.target;
 
     if (target instanceof HTMLElement && target.closest(".placed-icon-wrap, .map-label-wrap, .transition-waypoint")) {
+      return;
+    }
+
+    if (isDrawingLineSelectionEnabled) {
+      const viewport = viewportRef.current;
+
+      if (!viewport) {
+        return;
+      }
+
+      const rect = viewport.getBoundingClientRect();
+      const pointerX = event.clientX - rect.left;
+      const pointerY = event.clientY - rect.top;
+      const selectionRadius = 14;
+      let closestLineId: number | null = null;
+      let closestDistance = selectionRadius;
+
+      for (let lineIndex = screenDrawingLines.length - 1; lineIndex >= 0; lineIndex -= 1) {
+        const line = screenDrawingLines[lineIndex];
+
+        for (let pointIndex = 0; pointIndex < line.pointsPct.length - 2; pointIndex += 2) {
+          const distance = getDistanceToSegment(
+            pointerX,
+            pointerY,
+            (line.pointsPct[pointIndex] / 100) * rect.width,
+            (line.pointsPct[pointIndex + 1] / 100) * rect.height,
+            (line.pointsPct[pointIndex + 2] / 100) * rect.width,
+            (line.pointsPct[pointIndex + 3] / 100) * rect.height
+          );
+
+          if (distance < closestDistance) {
+            closestDistance = distance;
+            closestLineId = line.id;
+          }
+        }
+      }
+
+      onSelectDrawingLine(closestLineId);
       return;
     }
 
@@ -740,6 +895,7 @@ export function MapCanvas({
                     lines={previousScreenDrawingLines}
                     linesRevealProgress={1}
                     onCreateLine={handleCreateDrawingLine}
+                    selectedLineId={null}
                     width={viewportSize.width}
                   />
                 </div>
@@ -763,6 +919,7 @@ export function MapCanvas({
                 lines={screenDrawingLines}
                 linesRevealProgress={hasDayLayerTransition ? transitionProgress : 1}
                 onCreateLine={handleCreateDrawingLine}
+                selectedLineId={selectedDrawingLineId}
                 width={viewportSize.width}
               />
             </div>
@@ -825,4 +982,4 @@ export function MapCanvas({
       </div>
     </section>
   );
-}
+});

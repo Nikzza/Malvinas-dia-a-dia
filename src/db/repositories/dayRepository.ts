@@ -6,6 +6,9 @@ type DayRow = {
   etiqueta_fecha: string;
   es_evento_destacado: number;
   ruta_imagen_fondo: string | null;
+  vista_centro_lng: number | null;
+  vista_centro_lat: number | null;
+  vista_zoom: number | null;
   orden: number;
   created_at: string;
   updated_at: string;
@@ -21,7 +24,7 @@ export const dayRepository = {
     const rows = db
       .prepare(
         `
-          SELECT id, etiqueta_fecha, es_evento_destacado, ruta_imagen_fondo, orden, created_at, updated_at
+          SELECT id, etiqueta_fecha, es_evento_destacado, ruta_imagen_fondo, vista_centro_lng, vista_centro_lat, vista_zoom, orden, created_at, updated_at
           FROM dias
           WHERE perfil_id = ?
           ORDER BY orden ASC, id ASC
@@ -34,6 +37,9 @@ export const dayRepository = {
       etiquetaFecha: row.etiqueta_fecha,
       esEventoDestacado: Boolean(row.es_evento_destacado),
       rutaImagenFondo: row.ruta_imagen_fondo,
+      initialMapLongitude: row.vista_centro_lng,
+      initialMapLatitude: row.vista_centro_lat,
+      initialMapZoom: row.vista_zoom,
       orden: row.orden,
       createdAt: row.created_at,
       updatedAt: row.updated_at
@@ -57,7 +63,7 @@ export const dayRepository = {
     const created = db
       .prepare(
         `
-          SELECT id, etiqueta_fecha, es_evento_destacado, ruta_imagen_fondo, orden, created_at, updated_at
+          SELECT id, etiqueta_fecha, es_evento_destacado, ruta_imagen_fondo, vista_centro_lng, vista_centro_lat, vista_zoom, orden, created_at, updated_at
           FROM dias
           WHERE id = ?
         `
@@ -69,6 +75,9 @@ export const dayRepository = {
       etiquetaFecha: created.etiqueta_fecha,
       esEventoDestacado: Boolean(created.es_evento_destacado),
       rutaImagenFondo: created.ruta_imagen_fondo,
+      initialMapLongitude: created.vista_centro_lng,
+      initialMapLatitude: created.vista_centro_lat,
+      initialMapZoom: created.vista_zoom,
       orden: created.orden,
       createdAt: created.created_at,
       updatedAt: created.updated_at
@@ -113,5 +122,15 @@ export const dayRepository = {
         WHERE id = ?
       `
     ).run(etiquetaFecha.trim(), esEventoDestacado ? 1 : 0, id);
+  },
+  updateMapView: (id: number, longitude: number | null, latitude: number | null, zoom: number | null): void => {
+    const db = getDatabase();
+    db.prepare(
+      `
+        UPDATE dias
+        SET vista_centro_lng = ?, vista_centro_lat = ?, vista_zoom = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `
+    ).run(longitude, latitude, zoom, id);
   }
 };

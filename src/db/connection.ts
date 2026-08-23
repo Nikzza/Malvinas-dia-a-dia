@@ -46,9 +46,98 @@ function ensureColumn(db: Database.Database, tableName: string, columnName: stri
   const columns = db.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name: string }>;
   const hasColumn = columns.some((column) => column.name === columnName);
 
-  if (!hasColumn) {
-    db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
+  if (hasColumn) {
+    return false;
   }
+
+  db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
+  return true;
+}
+
+function ensureTrajectoryIdentifiers(db: Database.Database) {
+  const wasAdded = ensureColumn(db, "iconos_mapa", "identificador_trayectoria", "INTEGER");
+  const placements = db
+    .prepare("SELECT id, identificador_trayectoria FROM iconos_mapa ORDER BY id ASC")
+    .all() as Array<{ id: number; identificador_trayectoria: number | null }>;
+
+  if (!placements.length) {
+    return;
+  }
+
+  const identifiers = new Map<number, number>();
+  const needsTransitionBackfill =
+    wasAdded ||
+    placements.every(
+      (placement) =>
+        !Number.isInteger(placement.identificador_trayectoria) || Number(placement.identificador_trayectoria) <= 0
+    );
+
+  if (needsTransitionBackfill) {
+    const parent = new Map(placements.map((placement) => [placement.id, placement.id] as const));
+
+    function find(id: number): number {
+      const parentId = parent.get(id);
+
+      if (parentId === undefined || parentId === id) {
+        return id;
+      }
+
+      const root = find(parentId);
+      parent.set(id, root);
+      return root;
+    }
+
+    function union(leftId: number, rightId: number) {
+      if (!parent.has(leftId) || !parent.has(rightId)) {
+        return;
+      }
+
+      const leftRoot = find(leftId);
+      const rightRoot = find(rightId);
+
+      if (leftRoot !== rightRoot) {
+        parent.set(Math.max(leftRoot, rightRoot), Math.min(leftRoot, rightRoot));
+      }
+    }
+
+    const transitions = db
+      .prepare("SELECT id_colocacion_origen, id_colocacion_destino FROM transiciones_iconos_mapa")
+      .all() as Array<{ id_colocacion_origen: number; id_colocacion_destino: number }>;
+
+    for (const transition of transitions) {
+      union(transition.id_colocacion_origen, transition.id_colocacion_destino);
+    }
+
+    const minimumIdByRoot = new Map<number, number>();
+
+    for (const placement of placements) {
+      const root = find(placement.id);
+      minimumIdByRoot.set(root, Math.min(minimumIdByRoot.get(root) ?? placement.id, placement.id));
+    }
+
+    for (const placement of placements) {
+      identifiers.set(placement.id, minimumIdByRoot.get(find(placement.id)) ?? placement.id);
+    }
+  } else {
+    for (const placement of placements) {
+      const currentIdentifier = placement.identificador_trayectoria;
+      identifiers.set(
+        placement.id,
+        Number.isInteger(currentIdentifier) && Number(currentIdentifier) > 0 ? Number(currentIdentifier) : placement.id
+      );
+    }
+  }
+
+  const updateIdentifier = db.prepare(
+    "UPDATE iconos_mapa SET identificador_trayectoria = ? WHERE id = ?"
+  );
+  const migrateIdentifiers = db.transaction(() => {
+    for (const placement of placements) {
+      updateIdentifier.run(identifiers.get(placement.id) ?? placement.id, placement.id);
+    }
+  });
+
+  migrateIdentifiers();
 }
 
 function tableHasCascadeDelete(db: Database.Database, tableName: string, targetTable: string) {
@@ -85,6 +174,7 @@ function ensureIconCascadeDelete(db: Database.Database) {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         id_dia INTEGER NOT NULL,
         id_icono_biblioteca INTEGER NOT NULL,
+        identificador_trayectoria INTEGER,
         pos_x_pct REAL NOT NULL,
         pos_y_pct REAL NOT NULL,
         tipo_pin TEXT NOT NULL DEFAULT 'land',
@@ -118,6 +208,7 @@ function ensureIconCascadeDelete(db: Database.Database) {
         id,
         id_dia,
         id_icono_biblioteca,
+        identificador_trayectoria,
         pos_x_pct,
         pos_y_pct,
         tipo_pin,
@@ -134,6 +225,7 @@ function ensureIconCascadeDelete(db: Database.Database) {
         id,
         id_dia,
         id_icono_biblioteca,
+        NULL,
         pos_x_pct,
         pos_y_pct,
         COALESCE(tipo_pin, 'land'),
@@ -182,6 +274,9 @@ function ensureIconCascadeDelete(db: Database.Database) {
 function runCompatibilityMigrations(db: Database.Database) {
   ensureColumn(db, "dias", "perfil_id", "TEXT");
   ensureColumn(db, "dias", "es_evento_destacado", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn(db, "dias", "vista_centro_lng", "REAL");
+  ensureColumn(db, "dias", "vista_centro_lat", "REAL");
+  ensureColumn(db, "dias", "vista_zoom", "REAL");
   ensureColumn(db, "iconos_mapa", "tipo_pin", "TEXT NOT NULL DEFAULT 'land'");
   ensureColumn(db, "iconos_mapa", "tipo_contenido", "TEXT");
   ensureColumn(db, "iconos_mapa", "texto_descriptivo", "TEXT");
@@ -245,6 +340,7 @@ function runCompatibilityMigrations(db: Database.Database) {
   `);
   ensureColumn(db, "transiciones_iconos_mapa", "velocidades_json", "TEXT NOT NULL DEFAULT '[]'");
   ensureIconCascadeDelete(db);
+  ensureTrajectoryIdentifiers(db);
 }
 
 export function initDatabase() {

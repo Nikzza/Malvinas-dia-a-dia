@@ -34,6 +34,18 @@ export type UpdateDayPayload = {
   esEventoDestacado: boolean;
 };
 
+export type UpdateDayMapViewPayload = {
+  dayId: number;
+  longitude: number | null;
+  latitude: number | null;
+  zoom: number | null;
+};
+
+export type MoveDayPayload = {
+  dayId: number;
+  direction: -1 | 1;
+};
+
 export type CreateDayIconPayload = {
   dayId: number;
   nombre: string;
@@ -107,6 +119,7 @@ export type DeleteMapIconTransitionPayload = {
 
 export type UpdateMapIconPlacementContentPayload = {
   placementId: number;
+  trajectoryIdentifier: number;
   tituloContenido: string | null;
   textoDescriptivo: string | null;
   rutaImagenLocal: string | null;

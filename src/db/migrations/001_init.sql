@@ -4,6 +4,9 @@ CREATE TABLE IF NOT EXISTS dias (
   etiqueta_fecha TEXT NOT NULL,
   es_evento_destacado INTEGER NOT NULL DEFAULT 0,
   ruta_imagen_fondo TEXT,
+  vista_centro_lng REAL,
+  vista_centro_lat REAL,
+  vista_zoom REAL,
   orden INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -37,6 +40,7 @@ CREATE TABLE IF NOT EXISTS iconos_mapa (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   id_dia INTEGER NOT NULL,
   id_icono_biblioteca INTEGER NOT NULL,
+  identificador_trayectoria INTEGER,
   pos_x_pct REAL NOT NULL,
   pos_y_pct REAL NOT NULL,
   tipo_pin TEXT NOT NULL DEFAULT 'land',

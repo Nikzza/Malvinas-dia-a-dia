@@ -11,12 +11,14 @@ import type {
   DeleteMapIconPlacementPayload,
   DeleteMapLabelPayload,
   DeleteDayIconPayload,
+  MoveDayPayload,
   SelectContentResourcePayload,
   UpsertMapIconTransitionPayload,
   UpdateMapIconPlacementContentPayload,
   UpdateMapIconPlacementPayload,
   UpdateMapLabelContentPayload,
   UpdateMapLabelPositionPayload,
+  UpdateDayMapViewPayload,
   UpdateDayPayload
 } from "../shared/types/ipc";
 
@@ -39,6 +41,10 @@ const api = {
   createDay: (payload: CreateDayPayload) => ipcRenderer.invoke("days:create", payload, requireActiveProfileId()),
   deleteDay: (dayId: number) => ipcRenderer.invoke("days:delete", dayId, requireActiveProfileId()) as Promise<BootstrapData>,
   updateDay: (payload: UpdateDayPayload) => ipcRenderer.invoke("days:update", payload, requireActiveProfileId()) as Promise<BootstrapData>,
+  moveDay: (payload: MoveDayPayload) =>
+    ipcRenderer.invoke("days:move", payload, requireActiveProfileId()) as Promise<BootstrapData>,
+  updateDayMapView: (payload: UpdateDayMapViewPayload) =>
+    ipcRenderer.invoke("days:update-map-view", payload, requireActiveProfileId()) as Promise<BootstrapData>,
   selectIconPng: () => ipcRenderer.invoke("icons:select-png") as Promise<string | null>,
   createDayIcon: (payload: CreateDayIconPayload) => ipcRenderer.invoke("icons:create", payload, requireActiveProfileId()) as Promise<BootstrapData>,
   deleteDayIcon: (payload: DeleteDayIconPayload) => ipcRenderer.invoke("icons:delete", payload, requireActiveProfileId()) as Promise<BootstrapData>,

@@ -459,7 +459,7 @@ textarea:focus-visible {
   margin: 0 auto 16px;
   place-items: center;
   overflow: hidden;
-  border: 1.5px solid var(--dorado);
+  border: 1.5px solid rgba(129, 210, 247, 0.28);
   border-radius: 50%;
   color: var(--celeste);
   font-size: 24px;
@@ -582,7 +582,7 @@ textarea:focus-visible {
   flex: 0 0 auto;
   place-items: center;
   overflow: hidden;
-  border: 1.5px solid var(--dorado);
+  border: 1.5px solid rgba(129, 210, 247, 0.28);
   border-radius: 50%;
   color: var(--celeste);
   font-size: 10px;
@@ -648,6 +648,7 @@ textarea:focus-visible {
 .drawing-panel,
 .icons-panel,
 .labels-panel,
+.map-view-panel,
 .transition-panel {
   border: 0.5px solid var(--panel-border);
   border-radius: 11px;
@@ -665,6 +666,7 @@ textarea:focus-visible {
 .drawing-panel-header,
 .icons-panel-header,
 .labels-panel-header,
+.map-view-panel-header,
 .transition-panel-header {
   display: flex;
   align-items: center;
@@ -679,6 +681,7 @@ textarea:focus-visible {
 .drawing-panel-header strong,
 .icons-panel-header strong,
 .labels-panel-header strong,
+.map-view-panel-header strong,
 .transition-panel-header strong {
   color: var(--blanco-roto);
   font-size: 11px;
@@ -689,7 +692,8 @@ textarea:focus-visible {
 
 .drawing-panel-header strong,
 .icons-panel-header strong,
-.labels-panel-header strong {
+.labels-panel-header strong,
+.map-view-panel-header strong {
   font-size: 12px;
   letter-spacing: 0.18em;
 }
@@ -700,6 +704,7 @@ textarea:focus-visible {
 .drawing-close,
 .icons-close,
 .labels-close,
+.map-view-close,
 .transition-close {
   width: 22px;
   height: 22px;
@@ -713,7 +718,8 @@ textarea:focus-visible {
 
 .drawing-close,
 .icons-close,
-.labels-close {
+.labels-close,
+.map-view-close {
   width: 26px;
   height: 26px;
   font-size: 11px;
@@ -1045,7 +1051,7 @@ textarea:focus-visible {
   flex: 0 0 auto;
   width: auto;
   min-width: 64px;
-  height: 31px;
+  height: 36px;
   border: 0.5px solid rgba(129, 210, 247, 0.18);
   border-radius: 7px;
   background: transparent;
@@ -1067,6 +1073,8 @@ textarea:focus-visible {
 
 .timeline-box.active .timeline-select {
   color: var(--celeste);
+  padding-right: 23px;
+  padding-left: 23px;
 }
 
 .timeline-select {
@@ -1092,15 +1100,50 @@ textarea:focus-visible {
 
 .timeline-close {
   position: absolute;
-  top: -6px;
-  right: -5px;
+  top: 2px;
+  right: 2px;
   width: 14px;
   height: 14px;
   border: 0.5px solid rgba(129, 210, 247, 0.28);
   border-radius: 50%;
   background: rgba(13, 26, 46, 0.90);
   color: var(--celeste);
-  font-size: 8px;
+  font-size: 7px;
+}
+
+.timeline-move-button {
+  position: absolute;
+  bottom: 1px;
+  z-index: 4;
+  display: grid;
+  width: 16px;
+  height: 14px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: rgba(129, 210, 247, 0.48);
+  font-size: 15px;
+  line-height: 1;
+}
+
+.timeline-move-button.previous {
+  left: 2px;
+}
+
+.timeline-move-button.next {
+  right: 2px;
+}
+
+.timeline-move-button:not(:disabled):hover {
+  background: rgba(129, 210, 247, 0.12);
+  color: var(--celeste);
+}
+
+.timeline-move-button:disabled {
+  opacity: 0.28;
+  cursor: not-allowed;
 }
 
 .timeline-feature-button,
@@ -1118,12 +1161,12 @@ textarea:focus-visible {
 
 .timeline-feature-button {
   position: absolute;
-  top: -6px;
-  left: -5px;
-  width: 18px;
-  height: 18px;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
-  font-size: 10px;
+  font-size: 8px;
 }
 
 .timeline-favorite-toggle {
@@ -1148,7 +1191,7 @@ textarea:focus-visible {
 }
 
 .timeline-feature-button .timeline-favorite-icon {
-  font-size: 9px;
+  font-size: 7px;
 }
 
 .timeline-box.add-box,
@@ -1164,6 +1207,10 @@ textarea:focus-visible {
   font-size: 10px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
+}
+
+.timeline-box.add-box:not(.editing) {
+  border-style: dashed;
 }
 
 .timeline-input-row,
@@ -1186,6 +1233,13 @@ textarea:focus-visible {
   background: rgba(13, 26, 46, 0.90);
   color: var(--blanco-roto);
   font-size: 8px;
+}
+
+.timeline-input:focus,
+.timeline-input:focus-visible {
+  border-color: rgba(129, 210, 247, 0.28);
+  outline: none;
+  box-shadow: none;
 }
 
 .timeline-mini-button {
@@ -1213,6 +1267,9 @@ textarea:focus-visible {
 
 .timeline-add-symbol {
   color: var(--celeste);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 0.7;
 }
 
 .date-chip {
@@ -1716,7 +1773,8 @@ textarea:focus-visible {
 
 .drawing-toggle,
 .icons-toggle,
-.labels-toggle {
+.labels-toggle,
+.map-view-toggle {
   position: absolute;
   right: 14px;
   z-index: 30;
@@ -1739,9 +1797,14 @@ textarea:focus-visible {
   top: 174px;
 }
 
+.map-view-toggle {
+  top: 228px;
+}
+
 .drawing-toggle,
 .icons-toggle,
-.labels-toggle {
+.labels-toggle,
+.map-view-toggle {
   border: 1px solid rgba(129, 210, 247, 0.32);
   background: rgba(22, 58, 97, 0.80);
   color: var(--celeste);
@@ -1749,7 +1812,8 @@ textarea:focus-visible {
 
 .drawing-toggle.active,
 .icons-toggle.active,
-.labels-toggle.active {
+.labels-toggle.active,
+.map-view-toggle.active {
   border: 1.5px solid var(--dorado);
   background: rgba(219, 176, 96, 0.15);
   color: var(--dorado);
@@ -1758,6 +1822,7 @@ textarea:focus-visible {
 .drawing-panel,
 .icons-panel,
 .labels-panel,
+.map-view-panel,
 .transition-panel {
   position: absolute;
   right: 60px;
@@ -1779,6 +1844,94 @@ textarea:focus-visible {
 
 .labels-panel {
   top: 66px;
+}
+
+.map-view-panel {
+  top: 66px;
+}
+
+.map-view-pin-icon {
+  position: relative;
+  display: block;
+  width: 18px;
+  height: 18px;
+  margin: -3px auto 0;
+  border: 2px solid currentColor;
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+}
+
+.map-view-pin-icon::before {
+  content: "";
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 6px;
+  height: 6px;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+}
+
+.map-view-status {
+  display: grid;
+  gap: 5px;
+  margin-bottom: 10px;
+  padding: 10px;
+  border: 0.5px solid rgba(129, 210, 247, 0.20);
+  border-radius: 8px;
+  background: rgba(22, 58, 97, 0.22);
+}
+
+.map-view-status span {
+  overflow: hidden;
+  color: var(--blanco-roto);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.map-view-status strong {
+  color: var(--texto-muted);
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.map-view-status.saved strong {
+  color: var(--dorado);
+}
+
+.map-view-action-button {
+  width: 100%;
+  margin-bottom: 7px;
+  padding: 10px 8px;
+  border: 0.5px solid rgba(129, 210, 247, 0.28);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--texto-muted);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.map-view-action-button.primary {
+  border-color: var(--celeste);
+  background: var(--azul-panel);
+  color: var(--celeste);
+}
+
+.map-view-action-button:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+.map-view-panel-hint {
+  margin: 5px 2px 0;
+  color: rgba(129, 210, 247, 0.55);
+  font-size: 8px;
+  line-height: 1.5;
+  text-align: center;
 }
 
 .labels-toggle-symbol {
@@ -2149,6 +2302,7 @@ textarea:focus-visible {
   text-align: right;
 }
 
+.content-trajectory-input,
 .content-title-input,
 .content-textarea {
   width: 100%;
@@ -2162,6 +2316,7 @@ textarea:focus-visible {
   resize: vertical;
 }
 
+.content-trajectory-input,
 .content-title-input {
   min-height: 42px;
   resize: none;
@@ -2171,9 +2326,23 @@ textarea:focus-visible {
   min-height: 120px;
 }
 
+.content-trajectory-input::placeholder,
 .content-title-input::placeholder,
 .content-textarea::placeholder {
   color: var(--texto-muted);
+}
+
+.content-trajectory-field {
+  display: block;
+}
+
+.content-trajectory-field > span {
+  display: block;
+  margin: 0 2px 7px;
+  color: var(--texto-muted);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
 .content-resource-row {
@@ -2309,7 +2478,8 @@ textarea:focus-visible {
 
   .drawing-panel,
   .icons-panel,
-  .labels-panel {
+  .labels-panel,
+  .map-view-panel {
     right: 58px;
     width: min(215px, calc(100vw - 72px));
   }

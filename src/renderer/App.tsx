@@ -17,7 +17,7 @@ import {
 } from "../shared/types/mapLabel";
 import { EventDrawer } from "./components/layout/EventDrawer";
 import type { MapDrawingTool } from "./components/layout/MapDrawingLayer";
-import { MapCanvas } from "./components/layout/MapCanvas";
+import { MapCanvas, type MapCanvasHandle, type MapViewState } from "./components/layout/MapCanvas";
 import { TopTimeline } from "./components/layout/TopTimeline";
 
 type AppMode = "profiles" | "profile-admin" | "menu" | "edit" | "view";
@@ -202,19 +202,23 @@ export function App() {
   const [shouldShakePassword, setShouldShakePassword] = useState(false);
   const [activeDayId, setActiveDayId] = useState<number | null>(null);
   const [isSavingDay, setIsSavingDay] = useState(false);
+  const [isCreatingDay, setIsCreatingDay] = useState(false);
   const [isIconsPanelOpen, setIsIconsPanelOpen] = useState(false);
   const [dragLibraryIcon, setDragLibraryIcon] = useState<DayIcon | null>(null);
   const [isLabelsPanelOpen, setIsLabelsPanelOpen] = useState(false);
+  const [isMapViewPanelOpen, setIsMapViewPanelOpen] = useState(false);
   const [dragLabelStyle, setDragLabelStyle] = useState<MapLabelStyle | null>(null);
   const [editingMapLabel, setEditingMapLabel] = useState<MapLabel | null>(null);
   const [mapLabelText, setMapLabelText] = useState("");
   const [editingPlacement, setEditingPlacement] = useState<MapIconPlacement | null>(null);
+  const [contentTrajectoryIdentifier, setContentTrajectoryIdentifier] = useState("");
   const [contentTitle, setContentTitle] = useState("");
   const [contentText, setContentText] = useState("");
   const [contentImagePath, setContentImagePath] = useState<string | null>(null);
   const [contentVideoPath, setContentVideoPath] = useState<string | null>(null);
   const [isDrawingPanelOpen, setIsDrawingPanelOpen] = useState(false);
   const [isDrawingEnabled, setIsDrawingEnabled] = useState(false);
+  const [selectedDrawingLineId, setSelectedDrawingLineId] = useState<number | null>(null);
   const [drawingLineStyle, setDrawingLineStyle] = useState<MapDrawingLineStyle>("solid");
   const [drawingLineColor, setDrawingLineColor] = useState<MapDrawingLineColor>("yellow");
   const [drawingTool, setDrawingTool] = useState<MapDrawingTool>("freehand");
@@ -226,6 +230,7 @@ export function App() {
   const [dayLayerSnapshot, setDayLayerSnapshot] = useState<DayLayerSnapshot | null>(null);
   const [dayLayerTransitionProgress, setDayLayerTransitionProgress] = useState(1);
   const drawingPanelRef = useRef<HTMLElement | null>(null);
+  const mapCanvasRef = useRef<MapCanvasHandle | null>(null);
   const [drawingPanelHeight, setDrawingPanelHeight] = useState(0);
 
   useEffect(() => {
@@ -333,6 +338,17 @@ export function App() {
   const isEditMode = mode === "edit";
   const isViewMode = mode === "view";
   const isReadOnlyMode = isViewMode;
+  const activeDaySavedView: MapViewState | null =
+    activeDay &&
+    activeDay.initialMapLongitude !== null &&
+    activeDay.initialMapLatitude !== null &&
+    activeDay.initialMapZoom !== null
+      ? {
+          longitude: activeDay.initialMapLongitude,
+          latitude: activeDay.initialMapLatitude,
+          zoom: activeDay.initialMapZoom
+        }
+      : null;
   const previousActiveDayIdRef = useRef<number | null>(null);
   const transitionSourcePlacement = transitionEditing ? placementById.get(transitionEditing.sourcePlacementId) ?? null : null;
   const transitionTargetPlacement = transitionEditing ? placementById.get(transitionEditing.targetPlacementId) ?? null : null;
@@ -359,9 +375,22 @@ export function App() {
     setEditingMapLabel(null);
     setDragLabelStyle(null);
     setIsDrawingEnabled(false);
+    setSelectedDrawingLineId(null);
     setTransitionEditing(null);
     setAnimatedPlacementPositions({});
   }, [activeDayId, mode]);
+
+  useEffect(() => {
+    if (!isDrawingPanelOpen) {
+      setSelectedDrawingLineId(null);
+    }
+  }, [isDrawingPanelOpen]);
+
+  useEffect(() => {
+    if (mode !== "edit") {
+      setIsMapViewPanelOpen(false);
+    }
+  }, [mode]);
 
   useEffect(() => {
     if (!selectedPlacement) {
@@ -498,6 +527,7 @@ export function App() {
 
   async function handleCreateDay(label: string, esEventoDestacado: boolean) {
     setIsSavingDay(true);
+    setIsCreatingDay(true);
     setError(null);
 
     try {
@@ -511,6 +541,7 @@ export function App() {
       const message = cause instanceof Error ? cause.message : "No se pudo crear el dia.";
       setError(message);
     } finally {
+      setIsCreatingDay(false);
       setIsSavingDay(false);
     }
   }
@@ -554,6 +585,83 @@ export function App() {
     }
   }
 
+  async function handleMoveDay(dayId: number, direction: -1 | 1) {
+    if (isSavingDay) {
+      return;
+    }
+
+    setIsSavingDay(true);
+    setError(null);
+
+    try {
+      const nextData = await window.mapaMalvinas.moveDay({ dayId, direction });
+      setData(nextData);
+    } catch (cause: unknown) {
+      const message = cause instanceof Error ? cause.message : "No se pudo cambiar la posicion del dia.";
+      setError(message);
+    } finally {
+      setIsSavingDay(false);
+    }
+  }
+
+  async function handleSaveCurrentDayView() {
+    if (!activeDayId) {
+      setError("Primero selecciona un dia.");
+      return;
+    }
+
+    const currentView = mapCanvasRef.current?.getCurrentView() ?? null;
+
+    if (!currentView) {
+      setError("El mapa todavia no esta listo para guardar la vista.");
+      return;
+    }
+
+    try {
+      const nextData = await window.mapaMalvinas.updateDayMapView({
+        dayId: activeDayId,
+        longitude: currentView.longitude,
+        latitude: currentView.latitude,
+        zoom: currentView.zoom
+      });
+      setData(nextData);
+      setError(null);
+    } catch (cause: unknown) {
+      const message = cause instanceof Error ? cause.message : "No se pudo guardar la vista inicial.";
+      setError(message);
+    }
+  }
+
+  function handleGoToSavedDayView() {
+    if (!activeDaySavedView) {
+      setError("Este dia no tiene una vista inicial guardada.");
+      return;
+    }
+
+    mapCanvasRef.current?.goToView(activeDaySavedView);
+    setError(null);
+  }
+
+  async function handleResetDayView() {
+    if (!activeDayId) {
+      return;
+    }
+
+    try {
+      const nextData = await window.mapaMalvinas.updateDayMapView({
+        dayId: activeDayId,
+        longitude: null,
+        latitude: null,
+        zoom: null
+      });
+      setData(nextData);
+      setError(null);
+    } catch (cause: unknown) {
+      const message = cause instanceof Error ? cause.message : "No se pudo restablecer la vista inicial.";
+      setError(message);
+    }
+  }
+
   async function handleAddIcon() {
     if (!activeDayId) {
       setError("Primero selecciona un dia para agregar iconos.");
@@ -587,8 +695,10 @@ export function App() {
 
   function handleToggleDrawingPanel() {
     setIsDrawingPanelOpen((current) => !current);
+    setSelectedDrawingLineId(null);
     setIsIconsPanelOpen(false);
     setIsLabelsPanelOpen(false);
+    setIsMapViewPanelOpen(false);
     setDragLabelStyle(null);
   }
 
@@ -597,6 +707,7 @@ export function App() {
     setIsDrawingPanelOpen(false);
     setIsDrawingEnabled(false);
     setIsLabelsPanelOpen(false);
+    setIsMapViewPanelOpen(false);
     setDragLabelStyle(null);
   }
 
@@ -605,7 +716,20 @@ export function App() {
     setIsDrawingPanelOpen(false);
     setIsDrawingEnabled(false);
     setIsIconsPanelOpen(false);
+    setIsMapViewPanelOpen(false);
     setDragLibraryIcon(null);
+  }
+
+  function handleToggleMapViewPanel() {
+    setIsMapViewPanelOpen((current) => !current);
+    setIsDrawingPanelOpen(false);
+    setIsDrawingEnabled(false);
+    setSelectedDrawingLineId(null);
+    setIsIconsPanelOpen(false);
+    setIsLabelsPanelOpen(false);
+    setDragLibraryIcon(null);
+    setDragLabelStyle(null);
+    setTransitionEditing(null);
   }
 
   async function handleDeleteIcon(iconId: number) {
@@ -668,6 +792,7 @@ export function App() {
 
   function handleOpenPlacementEditor(placement: MapIconPlacement) {
     setEditingPlacement(placement);
+    setContentTrajectoryIdentifier(String(placement.trajectoryIdentifier));
     setContentTitle(placement.tituloContenido ?? "");
     setContentText(placement.textoDescriptivo ?? "");
     setContentImagePath(placement.rutaImagenLocal ?? null);
@@ -782,9 +907,17 @@ export function App() {
       return;
     }
 
+    const trajectoryIdentifier = Number(contentTrajectoryIdentifier);
+
+    if (!Number.isInteger(trajectoryIdentifier) || trajectoryIdentifier <= 0) {
+      setError("El identificador de trayectoria debe ser un numero entero mayor a cero.");
+      return;
+    }
+
     try {
       const nextData = await window.mapaMalvinas.updateMapIconPlacementContent({
         placementId: editingPlacement.id,
+        trajectoryIdentifier,
         tituloContenido: contentTitle.trim() || null,
         textoDescriptivo: contentText || null,
         rutaImagenLocal: contentImagePath,
@@ -854,11 +987,11 @@ export function App() {
 
     const targetPlacement =
       (data?.mapPlacementsByDay[nextDay.id] ?? []).find(
-        (placement) => placement.libraryIconId === sourcePlacement.libraryIconId
+        (placement) => placement.trajectoryIdentifier === sourcePlacement.trajectoryIdentifier
       ) ?? null;
 
     if (!targetPlacement) {
-      setError("No existe el mismo icono en el dia siguiente para crear la transicion.");
+      setError("No existe un icono con el mismo identificador de trayectoria en el dia siguiente.");
       return;
     }
 
@@ -880,6 +1013,7 @@ export function App() {
     });
     setIsDrawingPanelOpen(false);
     setIsLabelsPanelOpen(false);
+    setIsMapViewPanelOpen(false);
     setDragLabelStyle(null);
     setIsDrawingEnabled(false);
     setError(null);
@@ -1051,19 +1185,18 @@ export function App() {
     }
   }
 
-  async function handleDeleteLastDrawingLine() {
-    const lastLine = activeDrawingLines[activeDrawingLines.length - 1];
-
-    if (!lastLine) {
+  async function handleDeleteSelectedDrawingLine() {
+    if (selectedDrawingLineId === null) {
       return;
     }
 
     try {
-      const nextData = await window.mapaMalvinas.deleteMapDrawingLine({ lineId: lastLine.id });
+      const nextData = await window.mapaMalvinas.deleteMapDrawingLine({ lineId: selectedDrawingLineId });
       setData(nextData);
+      setSelectedDrawingLineId(null);
       setError(null);
     } catch (cause: unknown) {
-      const message = cause instanceof Error ? cause.message : "No se pudo borrar la ultima linea.";
+      const message = cause instanceof Error ? cause.message : "No se pudo borrar la linea seleccionada.";
       setError(message);
     }
   }
@@ -1361,14 +1494,11 @@ export function App() {
   }
 
   function renderProfileAvatar(profile: MalvinasProfile, className = "profile-avatar") {
-    const shouldShowProfileBorder = className.includes("active-profile-avatar");
-
     return (
       <span
         className={className}
         style={{
-          backgroundColor: profile.avatar ? undefined : profile.avatarColor,
-          borderColor: shouldShowProfileBorder ? profile.avatarColor : undefined
+          backgroundColor: profile.avatar ? undefined : profile.avatarColor
         }}
       >
         {profile.avatar ? <img alt={profile.name} src={profile.avatar} /> : profile.avatarInitials}
@@ -1650,10 +1780,12 @@ export function App() {
       <TopTimeline
         activeDayId={activeDayId}
         days={data?.days ?? []}
+        isCreatingDay={isCreatingDay}
         isEditable={isEditMode}
         isSavingDay={isSavingDay}
         onAddDay={handleAddDay}
         onDeleteDay={handleDeleteDay}
+        onMoveDay={handleMoveDay}
         onSelectDay={handleSelectDay}
         onUpdateDay={handleUpdateDay}
       />
@@ -1710,6 +1842,7 @@ export function App() {
           dragLibraryIcon={isEditMode ? dragLibraryIcon : null}
           dragLabelStyle={isEditMode ? dragLabelStyle : null}
           isDrawingEnabled={isDrawingEnabled}
+          isDrawingLineSelectionEnabled={isEditMode && isDrawingPanelOpen && !isDrawingEnabled}
           isEditable={isEditMode}
           isTransitionEditing={Boolean(transitionEditing)}
           onActivatePlacement={isReadOnlyMode ? handleOpenPlacementViewer : undefined}
@@ -1725,11 +1858,14 @@ export function App() {
           onMoveMapLabel={handleMoveMapLabel}
           onMovePlacement={handleMovePlacement}
           onMoveTransitionWaypoint={handleMoveTransitionWaypoint}
+          onSelectDrawingLine={setSelectedDrawingLineId}
           placements={activeMapPlacements}
           labels={activeMapLabels}
           previousDrawingLines={dayLayerSnapshot?.drawingLines ?? []}
           previousLabels={dayLayerSnapshot?.labels ?? []}
           previousPlacements={dayLayerSnapshot?.placements ?? []}
+          ref={mapCanvasRef}
+          selectedDrawingLineId={selectedDrawingLineId}
           transitionProgress={dayLayerTransitionProgress}
           transitionEditorSourcePlacement={transitionSourcePlacement}
           transitionEditorTargetPlacement={transitionTargetPlacement}
@@ -1750,6 +1886,20 @@ export function App() {
                 x
               </button>
             </div>
+
+            <label className="content-trajectory-field">
+              <span>Identificador Trayectoria</span>
+              <input
+                aria-label="Identificador Trayectoria"
+                className="content-trajectory-input"
+                min={1}
+                onChange={(event) => setContentTrajectoryIdentifier(event.target.value)}
+                placeholder="Identificador Trayectoria"
+                step={1}
+                type="number"
+                value={contentTrajectoryIdentifier}
+              />
+            </label>
 
             <textarea
               className="content-title-input"
@@ -1921,11 +2071,64 @@ export function App() {
         </aside>
       ) : null}
 
+      {isEditMode && isMapViewPanelOpen ? (
+        <aside className="map-view-panel">
+          <div className="map-view-panel-header">
+            <strong>VISTA INICIAL</strong>
+            <button className="map-view-close" onClick={() => setIsMapViewPanelOpen(false)} type="button">
+              x
+            </button>
+          </div>
+
+          <div className={activeDaySavedView ? "map-view-status saved" : "map-view-status"}>
+            <span>{activeDay?.etiquetaFecha ?? "Sin dia activo"}</span>
+            <strong>{activeDaySavedView ? "Vista guardada" : "Sin vista guardada"}</strong>
+          </div>
+
+          <button
+            className="map-view-action-button primary"
+            disabled={!activeDay}
+            onClick={() => void handleSaveCurrentDayView()}
+            type="button"
+          >
+            Guardar vista actual
+          </button>
+          <button
+            className="map-view-action-button"
+            disabled={!activeDaySavedView}
+            onClick={handleGoToSavedDayView}
+            type="button"
+          >
+            Ir a vista guardada
+          </button>
+          <button
+            className="map-view-action-button"
+            disabled={!activeDaySavedView}
+            onClick={() => void handleResetDayView()}
+            type="button"
+          >
+            Restablecer vista
+          </button>
+
+          <p className="map-view-panel-hint">
+            Al restablecer, los cambios de dia conservaran la posicion actual del mapa.
+          </p>
+        </aside>
+      ) : null}
+
       {isEditMode && isDrawingPanelOpen ? (
         <aside ref={drawingPanelRef} className="drawing-panel">
           <div className="drawing-panel-header">
             <strong>DIBUJO</strong>
-            <button className="drawing-close" onClick={() => setIsDrawingPanelOpen(false)} type="button">
+            <button
+              className="drawing-close"
+              onClick={() => {
+                setIsDrawingPanelOpen(false);
+                setIsDrawingEnabled(false);
+                setSelectedDrawingLineId(null);
+              }}
+              type="button"
+            >
               x
             </button>
           </div>
@@ -2004,7 +2207,10 @@ export function App() {
 
           <button
             className={isDrawingEnabled ? "drawing-action-button active" : "drawing-action-button"}
-            onClick={() => setIsDrawingEnabled((current) => !current)}
+            onClick={() => {
+              setSelectedDrawingLineId(null);
+              setIsDrawingEnabled((current) => !current);
+            }}
             type="button"
           >
             {isDrawingEnabled ? "Salir del dibujo" : "Empezar a dibujar"}
@@ -2012,11 +2218,11 @@ export function App() {
 
           <button
             className="drawing-action-button secondary"
-            disabled={!activeDrawingLines.length}
-            onClick={() => void handleDeleteLastDrawingLine()}
+            disabled={selectedDrawingLineId === null}
+            onClick={() => void handleDeleteSelectedDrawingLine()}
             type="button"
           >
-            Deshacer ultima
+            Deshacer linea
           </button>
         </aside>
       ) : null}
@@ -2111,6 +2317,15 @@ export function App() {
             type="button"
           >
             <span className="labels-toggle-symbol">A</span>
+          </button>
+          <button
+            aria-label="Abrir herramienta de vista inicial"
+            className={isMapViewPanelOpen ? "map-view-toggle active" : "map-view-toggle"}
+            onClick={handleToggleMapViewPanel}
+            title="Vista inicial del dia"
+            type="button"
+          >
+            <span aria-hidden="true" className="map-view-pin-icon" />
           </button>
         </>
       ) : null}
