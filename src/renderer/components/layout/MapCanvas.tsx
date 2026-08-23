@@ -69,7 +69,7 @@ export type MapViewState = {
 
 export type MapCanvasHandle = {
   getCurrentView: () => MapViewState | null;
-  goToView: (view: MapViewState) => void;
+  goToView: (view: MapViewState, speed: number) => void;
 };
 
 type ScreenPoint = {
@@ -81,7 +81,8 @@ const MAX_MERCATOR_LATITUDE = 85.05112878;
 const MALVINAS_CENTER: [number, number] = [-59.5236, -51.7963];
 const MAP_TILE_SIZE = 256;
 const MAP_MIN_ZOOM_PADDING = 0.02;
-const SAVED_VIEW_TRANSITION_MS = 900;
+const SAVED_VIEW_FAST_TRANSITION_MS = 900;
+const SAVED_VIEW_SLOW_TRANSITION_MS = SAVED_VIEW_FAST_TRANSITION_MS * 3;
 const MAPLIBRE_STYLE: StyleSpecification = {
   version: 8,
   sources: {
@@ -101,6 +102,14 @@ const MAPLIBRE_STYLE: StyleSpecification = {
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
+}
+
+function getSavedViewTransitionDuration(speed: number) {
+  const normalizedSpeed = clamp(speed, 0, 100) / 100;
+  return Math.round(
+    SAVED_VIEW_SLOW_TRANSITION_MS -
+      (SAVED_VIEW_SLOW_TRANSITION_MS - SAVED_VIEW_FAST_TRANSITION_MS) * normalizedSpeed
+  );
 }
 
 function getDistanceToSegment(
@@ -266,7 +275,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
         zoom: currentMap.getZoom()
       };
     },
-    goToView: (view) => {
+    goToView: (view, speed) => {
       const currentMap = mapInstanceRef.current;
 
       if (!currentMap) {
@@ -277,7 +286,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
       currentMap.easeTo({
         center: [view.longitude, view.latitude],
         zoom: view.zoom,
-        duration: SAVED_VIEW_TRANSITION_MS,
+        duration: getSavedViewTransitionDuration(speed),
         essential: true
       });
     }
@@ -370,13 +379,14 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
     currentMap.easeTo({
       center: [activeDay.initialMapLongitude, activeDay.initialMapLatitude],
       zoom: activeDay.initialMapZoom,
-      duration: SAVED_VIEW_TRANSITION_MS,
+      duration: getSavedViewTransitionDuration(activeDay.initialMapSpeed),
       essential: true
     });
   }, [
     activeDay?.id,
     activeDay?.initialMapLatitude,
     activeDay?.initialMapLongitude,
+    activeDay?.initialMapSpeed,
     activeDay?.initialMapZoom,
     isEditable,
     isMapReady

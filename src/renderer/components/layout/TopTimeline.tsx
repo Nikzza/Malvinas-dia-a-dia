@@ -33,7 +33,6 @@ export function TopTimeline({
   const [newDayLabel, setNewDayLabel] = useState("");
   const [editingDayId, setEditingDayId] = useState<number | null>(null);
   const [editingLabel, setEditingLabel] = useState("");
-  const [editingIsFeatured, setEditingIsFeatured] = useState(false);
   const activeDayIndex = days.findIndex((day) => day.id === activeDayId);
   const hasPreviousDay = activeDayIndex > 0;
   const hasNextDay = activeDayIndex >= 0 && activeDayIndex < days.length - 1;
@@ -60,15 +59,15 @@ export function TopTimeline({
 
   async function handleUpdateSubmit() {
     const trimmedLabel = editingLabel.trim();
+    const editingDay = days.find((day) => day.id === editingDayId);
 
-    if (!trimmedLabel || editingDayId === null) {
+    if (!trimmedLabel || !editingDay) {
       return;
     }
 
-    await onUpdateDay(editingDayId, trimmedLabel, editingIsFeatured);
+    await onUpdateDay(editingDay.id, trimmedLabel, editingDay.esEventoDestacado);
     setEditingDayId(null);
     setEditingLabel("");
-    setEditingIsFeatured(false);
   }
 
   function handleTimelineWheel(event: ReactWheelEvent<HTMLDivElement>) {
@@ -147,22 +146,11 @@ export function TopTimeline({
                     if (event.key === "Escape") {
                       setEditingDayId(null);
                       setEditingLabel("");
-                      setEditingIsFeatured(false);
                     }
                   }}
                   type="text"
                   value={editingLabel}
                 />
-                <button
-                  aria-label={editingIsFeatured ? "Quitar de eventos destacados" : "Agregar a eventos destacados"}
-                  className={editingIsFeatured ? "timeline-favorite-toggle active" : "timeline-favorite-toggle"}
-                  onClick={() => setEditingIsFeatured((current) => !current)}
-                  type="button"
-                >
-                  <span className="timeline-favorite-icon" aria-hidden="true">
-                    &#9733;
-                  </span>
-                </button>
               </div>
               <div className="timeline-edit-actions">
                 <button className="timeline-mini-button" onClick={() => void handleUpdateSubmit()} type="button">
@@ -173,7 +161,6 @@ export function TopTimeline({
                   onClick={() => {
                     setEditingDayId(null);
                     setEditingLabel("");
-                    setEditingIsFeatured(false);
                   }}
                   type="button"
                 >
@@ -195,7 +182,6 @@ export function TopTimeline({
                     ? () => {
                         setEditingDayId(day.id);
                         setEditingLabel(day.etiquetaFecha);
-                        setEditingIsFeatured(day.esEventoDestacado);
                       }
                     : undefined
                 }

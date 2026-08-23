@@ -8,6 +8,7 @@ export type Day = {
   initialMapLongitude: number | null;
   initialMapLatitude: number | null;
   initialMapZoom: number | null;
+  initialMapSpeed: number;
   imagenFondoDataUrl?: string | null;
   fondoMediaDataUrl?: string | null;
   tipoFondoMedia?: DayBackgroundMediaType | null;

@@ -277,6 +277,7 @@ function runCompatibilityMigrations(db: Database.Database) {
   ensureColumn(db, "dias", "vista_centro_lng", "REAL");
   ensureColumn(db, "dias", "vista_centro_lat", "REAL");
   ensureColumn(db, "dias", "vista_zoom", "REAL");
+  ensureColumn(db, "dias", "vista_velocidad", "INTEGER NOT NULL DEFAULT 100");
   ensureColumn(db, "iconos_mapa", "tipo_pin", "TEXT NOT NULL DEFAULT 'land'");
   ensureColumn(db, "iconos_mapa", "tipo_contenido", "TEXT");
   ensureColumn(db, "iconos_mapa", "texto_descriptivo", "TEXT");

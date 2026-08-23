@@ -26,6 +26,7 @@ type PasswordGateMode = "verify" | "create" | "change";
 type PasswordGateScope = "edit" | "profiles";
 const TRANSITION_ANIMATION_MS = 1800;
 const DEFAULT_WAYPOINT_SPEED = 50;
+const DEFAULT_MAP_VIEW_SPEED = 100;
 const DAY_LAYER_TRANSITION_MS = 900;
 const PROFILES_STORAGE_KEY = "malvinas_profiles";
 const ACTIVE_PROFILE_STORAGE_KEY = "malvinas_active_profile";
@@ -203,6 +204,7 @@ export function App() {
   const [activeDayId, setActiveDayId] = useState<number | null>(null);
   const [isSavingDay, setIsSavingDay] = useState(false);
   const [isCreatingDay, setIsCreatingDay] = useState(false);
+  const [mapViewSpeed, setMapViewSpeed] = useState(DEFAULT_MAP_VIEW_SPEED);
   const [isIconsPanelOpen, setIsIconsPanelOpen] = useState(false);
   const [dragLibraryIcon, setDragLibraryIcon] = useState<DayIcon | null>(null);
   const [isLabelsPanelOpen, setIsLabelsPanelOpen] = useState(false);
@@ -352,6 +354,10 @@ export function App() {
   const previousActiveDayIdRef = useRef<number | null>(null);
   const transitionSourcePlacement = transitionEditing ? placementById.get(transitionEditing.sourcePlacementId) ?? null : null;
   const transitionTargetPlacement = transitionEditing ? placementById.get(transitionEditing.targetPlacementId) ?? null : null;
+
+  useEffect(() => {
+    setMapViewSpeed(activeDay?.initialMapSpeed ?? DEFAULT_MAP_VIEW_SPEED);
+  }, [activeDay?.id, activeDay?.initialMapSpeed]);
 
   useLayoutEffect(() => {
     const panel = drawingPanelRef.current;
@@ -622,7 +628,8 @@ export function App() {
         dayId: activeDayId,
         longitude: currentView.longitude,
         latitude: currentView.latitude,
-        zoom: currentView.zoom
+        zoom: currentView.zoom,
+        speed: mapViewSpeed
       });
       setData(nextData);
       setError(null);
@@ -638,7 +645,7 @@ export function App() {
       return;
     }
 
-    mapCanvasRef.current?.goToView(activeDaySavedView);
+    mapCanvasRef.current?.goToView(activeDaySavedView, mapViewSpeed);
     setError(null);
   }
 
@@ -652,12 +659,41 @@ export function App() {
         dayId: activeDayId,
         longitude: null,
         latitude: null,
-        zoom: null
+        zoom: null,
+        speed: mapViewSpeed
       });
       setData(nextData);
       setError(null);
     } catch (cause: unknown) {
       const message = cause instanceof Error ? cause.message : "No se pudo restablecer la vista inicial.";
+      setError(message);
+    }
+  }
+
+  async function handleMapViewSpeedCommit(speed: number) {
+    if (!activeDay) {
+      return;
+    }
+
+    const normalizedSpeed = Math.min(100, Math.max(0, Math.round(speed)));
+
+    if (normalizedSpeed === activeDay.initialMapSpeed) {
+      return;
+    }
+
+    try {
+      const nextData = await window.mapaMalvinas.updateDayMapView({
+        dayId: activeDay.id,
+        longitude: activeDay.initialMapLongitude,
+        latitude: activeDay.initialMapLatitude,
+        zoom: activeDay.initialMapZoom,
+        speed: normalizedSpeed
+      });
+      setData(nextData);
+      setError(null);
+    } catch (cause: unknown) {
+      setMapViewSpeed(activeDay.initialMapSpeed);
+      const message = cause instanceof Error ? cause.message : "No se pudo guardar la velocidad de la vista inicial.";
       setError(message);
     }
   }
@@ -2110,9 +2146,28 @@ export function App() {
             Restablecer vista
           </button>
 
-          <p className="map-view-panel-hint">
-            Al restablecer, los cambios de dia conservaran la posicion actual del mapa.
-          </p>
+          <div className="transition-speed-item map-view-speed-control">
+            <div className="transition-speed-title">
+              <span>Velocidad del zoom</span>
+              <small>{mapViewSpeed}%</small>
+            </div>
+            <input
+              aria-label="Velocidad del zoom de la vista inicial"
+              disabled={!activeDay}
+              max="100"
+              min="0"
+              onChange={(event) => setMapViewSpeed(Number(event.target.value))}
+              onKeyUp={(event) => void handleMapViewSpeedCommit(Number(event.currentTarget.value))}
+              onPointerUp={(event) => void handleMapViewSpeedCommit(Number(event.currentTarget.value))}
+              step="1"
+              type="range"
+              value={mapViewSpeed}
+            />
+            <div className="transition-speed-extremes">
+              <span>Lento</span>
+              <span>Rapido</span>
+            </div>
+          </div>
         </aside>
       ) : null}
 

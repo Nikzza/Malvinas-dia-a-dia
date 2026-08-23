@@ -355,6 +355,10 @@ function registerIpcHandlers() {
     const values = [payload.longitude, payload.latitude, payload.zoom];
     const shouldReset = values.every((value) => value === null);
 
+    if (!Number.isFinite(payload.speed) || payload.speed < 0 || payload.speed > 100) {
+      throw new Error("La velocidad de la vista inicial no es valida.");
+    }
+
     if (!shouldReset && values.some((value) => value === null || !Number.isFinite(value))) {
       throw new Error("La vista inicial del dia no es valida.");
     }
@@ -371,7 +375,13 @@ function registerIpcHandlers() {
       throw new Error("La vista inicial del dia esta fuera de los limites del mapa.");
     }
 
-    dayRepository.updateMapView(payload.dayId, payload.longitude, payload.latitude, payload.zoom);
+    dayRepository.updateMapView(
+      payload.dayId,
+      payload.longitude,
+      payload.latitude,
+      payload.zoom,
+      Math.round(payload.speed)
+    );
     return getBootstrapData(profileId);
   });
   ipcMain.handle("icons:select-png", async () => {
