@@ -39,6 +39,7 @@ export type UpdateDayMapViewPayload = {
   longitude: number | null;
   latitude: number | null;
   zoom: number | null;
+  speed: number;
 };
 
 export type MoveDayPayload = {
