@@ -5,6 +5,7 @@ type MapIconPlacementRow = {
   id: number;
   id_dia: number;
   id_icono_biblioteca: number;
+  identificador_trayectoria: number;
   pos_x_pct: number;
   pos_y_pct: number;
   titulo_contenido: string | null;
@@ -21,7 +22,7 @@ export const mapIconPlacementRepository = {
     const rows = db
       .prepare(
         `
-          SELECT id, id_dia, id_icono_biblioteca, pos_x_pct, pos_y_pct, titulo_contenido, texto_descriptivo, ruta_imagen_local, ruta_video_local, created_at, updated_at
+          SELECT id, id_dia, id_icono_biblioteca, identificador_trayectoria, pos_x_pct, pos_y_pct, titulo_contenido, texto_descriptivo, ruta_imagen_local, ruta_video_local, created_at, updated_at
           FROM iconos_mapa
           ORDER BY id_dia ASC, id ASC
         `
@@ -32,6 +33,7 @@ export const mapIconPlacementRepository = {
       id: row.id,
       dayId: row.id_dia,
       libraryIconId: row.id_icono_biblioteca,
+      trajectoryIdentifier: row.identificador_trayectoria,
       posXPct: row.pos_x_pct,
       posYPct: row.pos_y_pct,
       tituloContenido: row.titulo_contenido,
@@ -44,12 +46,21 @@ export const mapIconPlacementRepository = {
   },
   create: (dayId: number, libraryIconId: number, posXPct: number, posYPct: number): void => {
     const db = getDatabase();
+    const nextIdentifier = db
+      .prepare(
+        `
+          SELECT COALESCE(MAX(identificador_trayectoria), 0) + 1 AS value
+          FROM iconos_mapa
+        `
+      )
+      .get() as { value: number };
+
     db.prepare(
       `
-        INSERT INTO iconos_mapa (id_dia, id_icono_biblioteca, pos_x_pct, pos_y_pct)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO iconos_mapa (id_dia, id_icono_biblioteca, identificador_trayectoria, pos_x_pct, pos_y_pct)
+        VALUES (?, ?, ?, ?, ?)
       `
-    ).run(dayId, libraryIconId, posXPct, posYPct);
+    ).run(dayId, libraryIconId, nextIdentifier.value, posXPct, posYPct);
   },
   updatePosition: (placementId: number, posXPct: number, posYPct: number): void => {
     const db = getDatabase();
@@ -63,6 +74,7 @@ export const mapIconPlacementRepository = {
   },
   updateContent: (
     placementId: number,
+    trajectoryIdentifier: number,
     tituloContenido: string | null,
     textoDescriptivo: string | null,
     rutaImagenLocal: string | null,
@@ -72,10 +84,10 @@ export const mapIconPlacementRepository = {
     db.prepare(
       `
         UPDATE iconos_mapa
-        SET titulo_contenido = ?, texto_descriptivo = ?, ruta_imagen_local = ?, ruta_video_local = ?, updated_at = CURRENT_TIMESTAMP
+        SET identificador_trayectoria = ?, titulo_contenido = ?, texto_descriptivo = ?, ruta_imagen_local = ?, ruta_video_local = ?, updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
       `
-    ).run(tituloContenido, textoDescriptivo, rutaImagenLocal, rutaVideoLocal, placementId);
+    ).run(trajectoryIdentifier, tituloContenido, textoDescriptivo, rutaImagenLocal, rutaVideoLocal, placementId);
   },
   remove: (placementId: number): void => {
     const db = getDatabase();

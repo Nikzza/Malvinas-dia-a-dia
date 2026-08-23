@@ -2,6 +2,7 @@ export type MapIconPlacement = {
   id: number;
   dayId: number;
   libraryIconId: number;
+  trajectoryIdentifier: number;
   posXPct: number;
   posYPct: number;
   tituloContenido?: string | null;

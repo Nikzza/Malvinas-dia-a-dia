@@ -15,6 +15,7 @@ import { mapDrawingLineRepository } from "../db/repositories/mapDrawingLineRepos
 import { mapIconPlacementRepository } from "../db/repositories/mapIconPlacementRepository";
 import { mapIconTransitionRepository } from "../db/repositories/mapIconTransitionRepository";
 import { mapLabelRepository } from "../db/repositories/mapLabelRepository";
+import { moveDayAndReconcileTransitions } from "../db/services/dayOrderService";
 import type {
   CreateMapLabelPayload,
   CreateMapIconPlacementPayload,
@@ -26,12 +27,14 @@ import type {
   DeleteMapIconPlacementPayload,
   DeleteMapLabelPayload,
   DeleteDayIconPayload,
+  MoveDayPayload,
   UpsertMapIconTransitionPayload,
   SelectContentResourcePayload,
   UpdateMapIconPlacementContentPayload,
   UpdateMapIconPlacementPayload,
   UpdateMapLabelContentPayload,
   UpdateMapLabelPositionPayload,
+  UpdateDayMapViewPayload,
   UpdateDayPayload
 } from "../shared/types/ipc";
 
@@ -282,10 +285,20 @@ function getBootstrapData(profileId: string) {
   const placements = mapIconPlacementRepository.listAll().filter((placement) => dayIds.has(placement.dayId));
   const labels = mapLabelRepository.listAll().filter((label) => dayIds.has(label.dayId));
   const placementIds = new Set(placements.map((placement) => placement.id));
+  const placementsById = new Map(placements.map((placement) => [placement.id, placement] as const));
   const transitions = mapIconTransitionRepository
     .listAll()
     .filter(
-      (transition) => placementIds.has(transition.sourcePlacementId) && placementIds.has(transition.targetPlacementId)
+      (transition) => {
+        if (!placementIds.has(transition.sourcePlacementId) || !placementIds.has(transition.targetPlacementId)) {
+          return false;
+        }
+
+        const sourcePlacement = placementsById.get(transition.sourcePlacementId);
+        const targetPlacement = placementsById.get(transition.targetPlacementId);
+
+        return sourcePlacement?.trajectoryIdentifier === targetPlacement?.trajectoryIdentifier;
+      }
     );
 
   return {
@@ -328,6 +341,37 @@ function registerIpcHandlers() {
     }
 
     dayRepository.update(payload.id, etiquetaFecha, Boolean(payload.esEventoDestacado));
+    return getBootstrapData(profileId);
+  });
+  ipcMain.handle("days:move", async (_event, payload: MoveDayPayload, profileId: string) => {
+    if (payload.direction !== -1 && payload.direction !== 1) {
+      throw new Error("La direccion seleccionada no es valida.");
+    }
+
+    moveDayAndReconcileTransitions(profileId, payload.dayId, payload.direction);
+    return getBootstrapData(profileId);
+  });
+  ipcMain.handle("days:update-map-view", async (_event, payload: UpdateDayMapViewPayload, profileId: string) => {
+    const values = [payload.longitude, payload.latitude, payload.zoom];
+    const shouldReset = values.every((value) => value === null);
+
+    if (!shouldReset && values.some((value) => value === null || !Number.isFinite(value))) {
+      throw new Error("La vista inicial del dia no es valida.");
+    }
+
+    if (
+      !shouldReset &&
+      (Number(payload.longitude) < -180 ||
+        Number(payload.longitude) > 180 ||
+        Number(payload.latitude) < -85.05112878 ||
+        Number(payload.latitude) > 85.05112878 ||
+        Number(payload.zoom) < 0 ||
+        Number(payload.zoom) > 22)
+    ) {
+      throw new Error("La vista inicial del dia esta fuera de los limites del mapa.");
+    }
+
+    dayRepository.updateMapView(payload.dayId, payload.longitude, payload.latitude, payload.zoom);
     return getBootstrapData(profileId);
   });
   ipcMain.handle("icons:select-png", async () => {
@@ -393,6 +437,18 @@ function registerIpcHandlers() {
 
     if (!Array.isArray(payload.pointSpeeds)) {
       throw new Error("Las velocidades de la transicion no son validas.");
+    }
+
+    const placements = mapIconPlacementRepository.listAll();
+    const sourcePlacement = placements.find((placement) => placement.id === payload.sourcePlacementId);
+    const targetPlacement = placements.find((placement) => placement.id === payload.targetPlacementId);
+
+    if (!sourcePlacement || !targetPlacement) {
+      throw new Error("No se pudo encontrar el origen o destino de la transicion.");
+    }
+
+    if (sourcePlacement.trajectoryIdentifier !== targetPlacement.trajectoryIdentifier) {
+      throw new Error("Los iconos deben tener el mismo identificador de trayectoria.");
     }
 
     const pointCount = Math.max(1, payload.pointsPct.length / 2 - 1);
@@ -479,8 +535,31 @@ function registerIpcHandlers() {
       throw new Error("El archivo seleccionado no es un video valido.");
     }
 
+    if (!Number.isInteger(payload.trajectoryIdentifier) || payload.trajectoryIdentifier <= 0) {
+      throw new Error("El identificador de trayectoria debe ser un numero entero mayor a cero.");
+    }
+
+    const placements = mapIconPlacementRepository.listAll();
+    const currentPlacement = placements.find((placement) => placement.id === payload.placementId);
+
+    if (!currentPlacement) {
+      throw new Error("No se encontro el icono que quieres editar.");
+    }
+
+    const duplicateInDay = placements.some(
+      (placement) =>
+        placement.id !== payload.placementId &&
+        placement.dayId === currentPlacement.dayId &&
+        placement.trajectoryIdentifier === payload.trajectoryIdentifier
+    );
+
+    if (duplicateInDay) {
+      throw new Error("Ese identificador de trayectoria ya esta siendo usado por otro icono de este dia.");
+    }
+
     mapIconPlacementRepository.updateContent(
       payload.placementId,
+      payload.trajectoryIdentifier,
       payload.tituloContenido,
       payload.textoDescriptivo,
       payload.rutaImagenLocal,
