@@ -120,8 +120,17 @@ Documentos/MapaMalvinas_Data/
 Dentro de esa carpeta se almacenan:
 
 - base de datos SQLite
-- imagenes usadas por el proyecto
-- videos o recursos asociados
+- perfiles, textos y configuraciones
+- imagenes, iconos y videos administrados por la aplicacion
+
+Los recursos cargados se copian a esta carpeta con identificadores de integridad. La aplicacion no depende de la ubicacion original del archivo y los videos se leen bajo demanda.
+
+Desde la pantalla `Perfiles` se puede:
+
+- `Exportar Perfiles`: crea un archivo `.malvinas` con todos los perfiles, mapas y recursos completos.
+- `Importar Perfiles`: agrega los perfiles de una copia a los existentes sin reemplazarlos.
+
+Una instalacion nueva comienza sin perfiles. La carpeta local de datos y los archivos `.malvinas` estan excluidos de Git.
 
 ## Estructura general
 

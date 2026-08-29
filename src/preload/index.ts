@@ -11,6 +11,8 @@ import type {
   DeleteMapIconPlacementPayload,
   DeleteMapLabelPayload,
   DeleteDayIconPayload,
+  ExportProfilesResult,
+  ImportProfilesResult,
   MoveDayPayload,
   SelectContentResourcePayload,
   UpsertMapIconTransitionPayload,
@@ -21,6 +23,7 @@ import type {
   UpdateDayMapViewPayload,
   UpdateDayPayload
 } from "../shared/types/ipc";
+import type { MalvinasProfile } from "../shared/types/profile";
 
 let activeProfileId: string | null = null;
 
@@ -33,6 +36,12 @@ function requireActiveProfileId() {
 }
 
 const api = {
+  initializeProfiles: (legacyProfiles: MalvinasProfile[]) =>
+    ipcRenderer.invoke("profiles:initialize", legacyProfiles) as Promise<MalvinasProfile[]>,
+  saveProfile: (profile: MalvinasProfile) =>
+    ipcRenderer.invoke("profiles:save", profile) as Promise<MalvinasProfile[]>,
+  exportProfiles: () => ipcRenderer.invoke("profiles:export") as Promise<ExportProfilesResult>,
+  importProfiles: () => ipcRenderer.invoke("profiles:import") as Promise<ImportProfilesResult>,
   getBootstrapData: (profileId: string) => {
     activeProfileId = profileId;
     return ipcRenderer.invoke("app:get-bootstrap-data", profileId) as Promise<BootstrapData>;

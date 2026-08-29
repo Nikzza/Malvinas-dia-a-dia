@@ -4,6 +4,7 @@ import type { MapDrawingLine, MapDrawingLineColor, MapDrawingLineStyle } from ".
 import type { MapIconPlacement } from "./mapIconPlacement";
 import type { MapIconTransition } from "./mapIconTransition";
 import type { MapLabel, MapLabelStyle } from "./mapLabel";
+import type { MalvinasProfile } from "./profile";
 
 export type IpcResponse<T> = {
   ok: boolean;
@@ -130,3 +131,11 @@ export type UpdateMapIconPlacementContentPayload = {
 export type SelectContentResourcePayload = {
   tipoContenido: "imagen" | "video";
 };
+
+export type ExportProfilesResult =
+  | { canceled: true }
+  | { canceled: false; profileCount: number; destinationPath: string };
+
+export type ImportProfilesResult =
+  | { canceled: true }
+  | { canceled: false; importedCount: number; profiles: MalvinasProfile[] };

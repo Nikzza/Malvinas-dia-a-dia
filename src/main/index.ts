@@ -1,8 +1,9 @@
-import { app, BrowserWindow, dialog, ipcMain, nativeImage } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, nativeImage, protocol } from "electron";
 import fs from "node:fs";
 import path from "node:path";
+import { Readable } from "node:stream";
 import { createMainWindow } from "./window";
-import { initDatabase, getDatabaseInfo } from "../db/connection";
+import { initDatabase, getDatabase, getDatabaseInfo } from "../db/connection";
 import { dayRepository } from "../db/repositories/dayRepository";
 import type { Day } from "../shared/types/day";
 import { isMapDrawingLineColor, type MapDrawingLine } from "../shared/types/mapDrawingLine";
@@ -15,7 +16,19 @@ import { mapDrawingLineRepository } from "../db/repositories/mapDrawingLineRepos
 import { mapIconPlacementRepository } from "../db/repositories/mapIconPlacementRepository";
 import { mapIconTransitionRepository } from "../db/repositories/mapIconTransitionRepository";
 import { mapLabelRepository } from "../db/repositories/mapLabelRepository";
+import { profileRepository } from "../db/repositories/profileRepository";
 import { moveDayAndReconcileTransitions } from "../db/services/dayOrderService";
+import {
+  getManagedResourceStatus,
+  getManagedResourceUrl,
+  importManagedResource,
+  migrateLegacyResources,
+  resolveStoredResourcePath,
+  storeManagedBuffer,
+  toManagedRelativePath
+} from "../db/services/managedAssetService";
+import { exportProfilesBackup, importProfilesBackup } from "../db/services/profileBackupService";
+import type { MalvinasProfile } from "../shared/types/profile";
 import type {
   CreateMapLabelPayload,
   CreateMapIconPlacementPayload,
@@ -40,6 +53,19 @@ import type {
 
 const IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "gif", "bmp", "webp", "svg", "avif", "tif", "tiff", "ico"];
 const VIDEO_EXTENSIONS = ["mp4", "webm", "mov", "m4v", "avi", "mkv", "wmv", "flv", "mpeg", "mpg", "ts", "mts", "m2ts", "3gp", "ogv"];
+
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: "malvinas-media",
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+      stream: true
+    }
+  }
+]);
 
 function getMimeType(filePath: string) {
   const extension = path.extname(filePath).toLowerCase();
@@ -132,21 +158,7 @@ function getResourceDialogConfig(tipoContenido: "imagen" | "video") {
   };
 }
 
-function toFileDataUrl(filePath: string | null) {
-  if (!filePath) {
-    return null;
-  }
-
-  try {
-    const buffer = fs.readFileSync(filePath);
-    const mimeType = getMimeType(filePath);
-    return `data:${mimeType};base64,${buffer.toString("base64")}`;
-  } catch {
-    return null;
-  }
-}
-
-function createTransparentIconCopy(sourcePath: string) {
+async function createTransparentIconCopy(sourcePath: string) {
   const image = nativeImage.createFromPath(sourcePath);
 
   if (image.isEmpty()) {
@@ -187,19 +199,86 @@ function createTransparentIconCopy(sourcePath: string) {
     bitmap[offset + 3] = nextAlpha;
   }
 
-  const outputDirectory = path.join(
-    getDatabaseInfo().dataDirectory,
-    "assets",
-    "images",
-    "imported-icons",
-    `${Date.now()}-${Math.random().toString(16).slice(2)}`
-  );
-  const outputPath = path.join(outputDirectory, path.basename(sourcePath));
   const processedImage = nativeImage.createFromBitmap(bitmap, { width, height, scaleFactor: 1 });
+  return storeManagedBuffer(processedImage.toPNG(), "icon", ".png");
+}
 
-  fs.mkdirSync(outputDirectory, { recursive: true });
-  fs.writeFileSync(outputPath, processedImage.toPNG());
-  return outputPath;
+function registerManagedMediaProtocol() {
+  protocol.handle("malvinas-media", async (request) => {
+    try {
+      const requestUrl = new URL(request.url);
+
+      if (requestUrl.hostname !== "asset") {
+        return new Response("Recurso no valido", { status: 400 });
+      }
+
+      const relativePath = decodeURIComponent(requestUrl.pathname.replace(/^\/+/, ""));
+      const absolutePath = resolveStoredResourcePath(relativePath);
+
+      if (!absolutePath) {
+        return new Response("Recurso no valido", { status: 400 });
+      }
+
+      try {
+        toManagedRelativePath(absolutePath);
+      } catch {
+        return new Response("Acceso denegado", { status: 403 });
+      }
+
+      const stats = await fs.promises.stat(absolutePath).catch(() => null);
+
+      if (!stats?.isFile()) {
+        return new Response("Recurso no encontrado", { status: 404 });
+      }
+
+      const baseHeaders = {
+        "Accept-Ranges": "bytes",
+        "Cache-Control": "private, max-age=31536000, immutable",
+        "Content-Type": getMimeType(absolutePath)
+      };
+      const rangeHeader = request.headers.get("range");
+
+      if (rangeHeader) {
+        const match = /^bytes=(\d*)-(\d*)$/i.exec(rangeHeader);
+
+        if (!match) {
+          return new Response(null, { status: 416, headers: { "Content-Range": `bytes */${stats.size}` } });
+        }
+
+        const requestedStart = match[1] ? Number(match[1]) : null;
+        const requestedEnd = match[2] ? Number(match[2]) : null;
+        const isSuffixRange = requestedStart === null;
+        const start = isSuffixRange
+          ? Math.max(0, stats.size - (requestedEnd ?? 0))
+          : requestedStart;
+        const end = isSuffixRange
+          ? stats.size - 1
+          : Math.min(requestedEnd ?? stats.size - 1, stats.size - 1);
+
+        if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || start > end || start >= stats.size) {
+          return new Response(null, { status: 416, headers: { "Content-Range": `bytes */${stats.size}` } });
+        }
+
+        const stream = Readable.toWeb(fs.createReadStream(absolutePath, { start, end })) as ReadableStream;
+        return new Response(request.method === "HEAD" ? null : stream, {
+          status: 206,
+          headers: {
+            ...baseHeaders,
+            "Content-Length": String(end - start + 1),
+            "Content-Range": `bytes ${start}-${end}/${stats.size}`
+          }
+        });
+      }
+
+      const stream = Readable.toWeb(fs.createReadStream(absolutePath)) as ReadableStream;
+      return new Response(request.method === "HEAD" ? null : stream, {
+        status: 200,
+        headers: { ...baseHeaders, "Content-Length": String(stats.size) }
+      });
+    } catch {
+      return new Response("No se pudo leer el recurso", { status: 500 });
+    }
+  });
 }
 
 function enrichDays(days: Day[]) {
@@ -215,7 +294,7 @@ function enrichIconsByDay(icons: DayIcon[]) {
   return icons.reduce<Record<number, DayIcon[]>>((accumulator, icon) => {
     const item = {
       ...icon,
-      iconoDataUrl: toFileDataUrl(icon.rutaIconoLocal)
+      iconoDataUrl: getManagedResourceUrl(icon.rutaIconoLocal)
     };
 
     if (!accumulator[icon.dayId]) {
@@ -235,9 +314,11 @@ function enrichMapPlacementsByDay(placements: MapIconPlacement[], icons: DayIcon
     const item = {
       ...placement,
       nombreIcono: libraryIcon?.nombre,
-      iconoDataUrl: toFileDataUrl(libraryIcon?.rutaIconoLocal ?? null),
-      imagenDataUrl: toFileDataUrl(placement.rutaImagenLocal ?? null),
-      videoDataUrl: toFileDataUrl(placement.rutaVideoLocal ?? null)
+      iconoDataUrl: getManagedResourceUrl(libraryIcon?.rutaIconoLocal ?? null),
+      imagenDataUrl: getManagedResourceUrl(placement.rutaImagenLocal ?? null),
+      videoDataUrl: getManagedResourceUrl(placement.rutaVideoLocal ?? null),
+      imagenEstado: getManagedResourceStatus(placement.rutaImagenLocal),
+      videoEstado: getManagedResourceStatus(placement.rutaVideoLocal)
     };
 
     if (!accumulator[placement.dayId]) {
@@ -314,10 +395,97 @@ function getBootstrapData(profileId: string) {
   };
 }
 
+function createRecoveredProfile(profileId: string, index: number): MalvinasProfile {
+  const name = `Perfil recuperado ${index}`;
+
+  return {
+    id: profileId,
+    name,
+    avatar: null,
+    avatarInitials: "PR",
+    avatarColor: "#DBB060",
+    createdAt: new Date().toISOString(),
+    mapState: {
+      startDay: 1,
+      startCenter: [-59.5236, -51.7963],
+      startZoom: 6.25
+    },
+    icons: [],
+    drawings: {},
+    mapPins: {},
+    drawingStyle: {
+      traceType: "trazo-libre",
+      lineStyle: "lisa",
+      color: "#DBB060"
+    }
+  };
+}
+
+function initializeProfiles(legacyProfiles: MalvinasProfile[]) {
+  profileRepository.insertMissing(Array.isArray(legacyProfiles) ? legacyProfiles : []);
+
+  const db = getDatabase();
+  const missingProfileIds = db
+    .prepare(
+      `
+        SELECT DISTINCT perfil_id
+        FROM dias
+        WHERE perfil_id IS NOT NULL
+          AND perfil_id <> ''
+          AND NOT EXISTS (SELECT 1 FROM perfiles WHERE perfiles.id = dias.perfil_id)
+        ORDER BY perfil_id ASC
+      `
+    )
+    .all() as Array<{ perfil_id: string }>;
+
+  profileRepository.insertMissing(
+    missingProfileIds.map((row, index) => createRecoveredProfile(row.perfil_id, index + 1))
+  );
+  return profileRepository.list();
+}
+
 function registerIpcHandlers() {
   ipcMain.handle("app:get-bootstrap-data", async (_event, profileId: string) => getBootstrapData(profileId));
+  ipcMain.handle("profiles:initialize", async (_event, legacyProfiles: MalvinasProfile[]) =>
+    initializeProfiles(legacyProfiles)
+  );
+  ipcMain.handle("profiles:save", async (_event, profile: MalvinasProfile) => {
+    profileRepository.upsert(profile);
+    return profileRepository.list();
+  });
   ipcMain.handle("profiles:delete-data", async (_event, profileId: string) => {
     dayRepository.removeByProfile(profileId);
+    profileRepository.remove(profileId);
+  });
+  ipcMain.handle("profiles:export", async () => {
+    await migrateLegacyResources();
+    const defaultName = `Perfiles-Malvinas-${new Date().toISOString().slice(0, 10)}.malvinas`;
+    const result = await dialog.showSaveDialog({
+      title: "Exportar perfiles",
+      defaultPath: path.join(app.getPath("documents"), defaultName),
+      filters: [{ name: "Copia de perfiles Malvinas", extensions: ["malvinas"] }]
+    });
+
+    if (result.canceled || !result.filePath) {
+      return { canceled: true as const };
+    }
+
+    const exported = await exportProfilesBackup(result.filePath, app.getVersion());
+    return { canceled: false as const, ...exported };
+  });
+  ipcMain.handle("profiles:import", async () => {
+    const result = await dialog.showOpenDialog({
+      title: "Importar perfiles",
+      properties: ["openFile"],
+      filters: [{ name: "Copia de perfiles Malvinas", extensions: ["malvinas"] }]
+    });
+
+    if (result.canceled || !result.filePaths[0]) {
+      return { canceled: true as const };
+    }
+
+    const imported = await importProfilesBackup(result.filePaths[0]);
+    return { canceled: false as const, ...imported };
   });
   ipcMain.handle("days:create", async (_event, payload: CreateDayPayload, profileId: string) => {
     const etiquetaFecha = payload.etiquetaFecha.trim();
@@ -401,7 +569,7 @@ function registerIpcHandlers() {
     }
 
     const selectedPath = result.filePaths[0] ?? null;
-    return selectedPath ? createTransparentIconCopy(selectedPath) : null;
+    return selectedPath ? await createTransparentIconCopy(selectedPath) : null;
   });
   ipcMain.handle("icons:create", async (_event, payload: CreateDayIconPayload, profileId: string) => {
     if (!payload.dayId) {
@@ -567,13 +735,39 @@ function registerIpcHandlers() {
       throw new Error("Ese identificador de trayectoria ya esta siendo usado por otro icono de este dia.");
     }
 
+    const persistResource = async (
+      selectedPath: string | null,
+      currentPath: string | null | undefined,
+      kind: "image" | "video"
+    ) => {
+      if (!selectedPath) {
+        return null;
+      }
+
+      if (selectedPath === currentPath && getManagedResourceStatus(selectedPath) !== "available") {
+        return selectedPath;
+      }
+
+      return importManagedResource(selectedPath, kind);
+    };
+    const managedImagePath = await persistResource(
+      payload.rutaImagenLocal,
+      currentPlacement.rutaImagenLocal,
+      "image"
+    );
+    const managedVideoPath = await persistResource(
+      payload.rutaVideoLocal,
+      currentPlacement.rutaVideoLocal,
+      "video"
+    );
+
     mapIconPlacementRepository.updateContent(
       payload.placementId,
       payload.trajectoryIdentifier,
       payload.tituloContenido,
       payload.textoDescriptivo,
-      payload.rutaImagenLocal,
-      payload.rutaVideoLocal
+      managedImagePath,
+      managedVideoPath
     );
     return getBootstrapData(profileId);
   });
@@ -606,6 +800,15 @@ function registerIpcHandlers() {
 async function bootstrap() {
   await app.whenReady();
   initDatabase();
+  registerManagedMediaProtocol();
+  const migrationResult = await migrateLegacyResources();
+
+  if (migrationResult.unavailablePaths.length) {
+    console.warn(
+      `No se pudieron migrar ${migrationResult.unavailablePaths.length} recursos porque no estan disponibles.`
+    );
+  }
+
   registerIpcHandlers();
   createMainWindow();
 

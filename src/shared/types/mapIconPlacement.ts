@@ -11,6 +11,8 @@ export type MapIconPlacement = {
   rutaVideoLocal?: string | null;
   imagenDataUrl?: string | null;
   videoDataUrl?: string | null;
+  imagenEstado?: "empty" | "available" | "missing" | "unreadable";
+  videoEstado?: "empty" | "available" | "missing" | "unreadable";
   createdAt: string;
   updatedAt: string;
   nombreIcono?: string;

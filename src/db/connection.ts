@@ -272,6 +272,14 @@ function ensureIconCascadeDelete(db: Database.Database) {
 }
 
 function runCompatibilityMigrations(db: Database.Database) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS perfiles (
+      id TEXT PRIMARY KEY,
+      data_json TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
   ensureColumn(db, "dias", "perfil_id", "TEXT");
   ensureColumn(db, "dias", "es_evento_destacado", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn(db, "dias", "vista_centro_lng", "REAL");
