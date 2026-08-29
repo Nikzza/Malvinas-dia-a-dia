@@ -12,6 +12,8 @@ import type {
   DeleteMapIconPlacementPayload,
   DeleteMapLabelPayload,
   DeleteDayIconPayload,
+  ExportProfilesResult,
+  ImportProfilesResult,
   MoveDayPayload,
   SelectContentResourcePayload,
   UpsertMapIconTransitionPayload,
@@ -22,10 +24,15 @@ import type {
   UpdateDayMapViewPayload,
   UpdateDayPayload
 } from "../shared/types/ipc";
+import type { MalvinasProfile } from "../shared/types/profile";
 
 declare global {
   interface Window {
     mapaMalvinas: {
+      initializeProfiles: (legacyProfiles: MalvinasProfile[]) => Promise<MalvinasProfile[]>;
+      saveProfile: (profile: MalvinasProfile) => Promise<MalvinasProfile[]>;
+      exportProfiles: () => Promise<ExportProfilesResult>;
+      importProfiles: () => Promise<ImportProfilesResult>;
       getBootstrapData: (profileId: string) => Promise<BootstrapData>;
       deleteProfileData: (profileId: string) => Promise<void>;
       createDay: (payload: CreateDayPayload) => Promise<BootstrapData>;

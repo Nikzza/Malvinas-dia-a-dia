@@ -9,6 +9,7 @@ import type {
 import type { DayIcon } from "../shared/types/dayIcon";
 import type { MapIconPlacement } from "../shared/types/mapIconPlacement";
 import type { MapIconTransition } from "../shared/types/mapIconTransition";
+import type { MalvinasProfile } from "../shared/types/profile";
 import {
   MAP_LABEL_STYLES,
   MAP_LABEL_STYLE_NAMES,
@@ -36,6 +37,8 @@ const DEFAULT_PROFILES_PASSWORD = "1111";
 const PROFILE_BORDER_GOLD = "#DBB060";
 const DEFAULT_PROFILE_CENTER: [number, number] = [-59.5236, -51.7963];
 const DEFAULT_PROFILE_ZOOM = 6.25;
+const EMPTY_DAYS: BootstrapData["days"] = [];
+const EMPTY_MAP_TRANSITIONS: MapIconTransition[] = [];
 const DRAWING_COLOR_OPTIONS: Array<{ value: MapDrawingLineColor; label: string; hex: string }> = [
   { value: "red", label: "Rojo", hex: "#E65050" },
   { value: "yellow", label: "Amarillo", hex: "#DBB060" },
@@ -56,34 +59,6 @@ type DayLayerSnapshot = {
   drawingLines: MapDrawingLine[];
   placements: MapIconPlacement[];
   labels: MapLabel[];
-};
-
-type MalvinasProfile = {
-  id: string;
-  name: string;
-  avatar: string | null;
-  avatarInitials: string;
-  avatarColor: string;
-  createdAt: string;
-  mapState: {
-    startDay: number;
-    startCenter: [number, number];
-    startZoom: number;
-  };
-  icons: Array<{
-    id: string;
-    name: string;
-    imageUrl: string;
-    type: "terrestre" | "naval";
-    borderColor: string;
-  }>;
-  drawings: Record<string, unknown[]>;
-  mapPins: Record<string, unknown[]>;
-  drawingStyle: {
-    traceType: "trazo-libre" | "a-b-recta" | "a-b-curva";
-    lineStyle: "lisa" | "punteada" | "puntos";
-    color: string;
-  };
 };
 
 type ProfileFormState = {
@@ -193,6 +168,9 @@ export function App() {
   const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
   const [profileForm, setProfileForm] = useState<ProfileFormState>(() => getEmptyProfileForm());
   const [profileFormError, setProfileFormError] = useState<string | null>(null);
+  const [profileTransferMessage, setProfileTransferMessage] = useState<string | null>(null);
+  const [profileTransferError, setProfileTransferError] = useState<string | null>(null);
+  const [isProfileTransferRunning, setIsProfileTransferRunning] = useState(false);
   const [passwordGateMode, setPasswordGateMode] = useState<PasswordGateMode | null>(null);
   const [passwordGateScope, setPasswordGateScope] = useState<PasswordGateScope>("edit");
   const [isProfileAccessGranted, setIsProfileAccessGranted] = useState(false);
@@ -233,57 +211,84 @@ export function App() {
   const [dayLayerTransitionProgress, setDayLayerTransitionProgress] = useState(1);
   const drawingPanelRef = useRef<HTMLElement | null>(null);
   const mapCanvasRef = useRef<MapCanvasHandle | null>(null);
+  const profileNameInputRef = useRef<HTMLInputElement | null>(null);
   const [drawingPanelHeight, setDrawingPanelHeight] = useState(0);
 
   useEffect(() => {
-    if (!canUseLocalStorage()) {
-      const defaultProfile = createDefaultProfile();
-      setProfiles([defaultProfile]);
-      setActiveProfileId(defaultProfile.id);
-      setStorageWarning("Activa el almacenamiento local para guardar los perfiles");
-      setIsProfileAccessGranted(true);
-      setMode("profiles");
-      return;
-    }
+    let isCancelled = false;
 
-    try {
-      const storedProfiles = window.localStorage.getItem(PROFILES_STORAGE_KEY);
-      const parsedProfiles = storedProfiles ? (JSON.parse(storedProfiles) as MalvinasProfile[]) : [];
-      const loadedProfiles = Array.isArray(parsedProfiles) && parsedProfiles.length ? parsedProfiles : [createDefaultProfile()];
-      const nextProfiles: MalvinasProfile[] = loadedProfiles.map((profile) => ({
-        ...profile,
-        avatarColor: PROFILE_BORDER_GOLD,
-        mapState: {
-          startDay: 1,
-          startCenter: [...DEFAULT_PROFILE_CENTER],
-          startZoom: DEFAULT_PROFILE_ZOOM
+    async function loadProfiles() {
+      const hasLocalStorage = canUseLocalStorage();
+      let legacyProfiles: MalvinasProfile[] = [];
+
+      if (hasLocalStorage) {
+        try {
+          const storedProfiles = window.localStorage.getItem(PROFILES_STORAGE_KEY);
+          const parsedProfiles = storedProfiles ? (JSON.parse(storedProfiles) as MalvinasProfile[]) : [];
+          legacyProfiles = Array.isArray(parsedProfiles)
+            ? parsedProfiles.map((profile) => ({
+                ...profile,
+                avatarColor: PROFILE_BORDER_GOLD,
+                mapState: {
+                  startDay: 1,
+                  startCenter: [...DEFAULT_PROFILE_CENTER],
+                  startZoom: DEFAULT_PROFILE_ZOOM
+                }
+              }))
+            : [];
+        } catch {
+          legacyProfiles = [];
         }
-      }));
-      const storedActiveProfileId = window.localStorage.getItem(ACTIVE_PROFILE_STORAGE_KEY);
-      const nextActiveProfileId =
-        storedActiveProfileId && nextProfiles.some((profile) => profile.id === storedActiveProfileId)
-          ? storedActiveProfileId
-          : null;
-
-      window.localStorage.setItem(PROFILES_STORAGE_KEY, JSON.stringify(nextProfiles));
-
-      if (!window.localStorage.getItem(PROFILES_PASSWORD_STORAGE_KEY)) {
-        window.localStorage.setItem(PROFILES_PASSWORD_STORAGE_KEY, DEFAULT_PROFILES_PASSWORD);
       }
 
-      setProfiles(nextProfiles);
-      setActiveProfileId(nextActiveProfileId);
-      setMode(nextActiveProfileId ? "view" : "profiles");
-      setPasswordGateScope("profiles");
-      setPasswordGateMode(nextActiveProfileId ? null : "verify");
-    } catch {
-      const defaultProfile = createDefaultProfile();
-      setProfiles([defaultProfile]);
-      setActiveProfileId(defaultProfile.id);
-      setStorageWarning("Activa el almacenamiento local para guardar los perfiles");
-      setIsProfileAccessGranted(true);
-      setMode("profiles");
+      try {
+        const loadedProfiles = await window.mapaMalvinas.initializeProfiles(legacyProfiles);
+
+        if (isCancelled) {
+          return;
+        }
+
+        const storedActiveProfileId = hasLocalStorage
+          ? window.localStorage.getItem(ACTIVE_PROFILE_STORAGE_KEY)
+          : null;
+        const nextActiveProfileId =
+          storedActiveProfileId && loadedProfiles.some((profile) => profile.id === storedActiveProfileId)
+            ? storedActiveProfileId
+            : null;
+
+        if (hasLocalStorage) {
+          window.localStorage.removeItem(PROFILES_STORAGE_KEY);
+
+          if (!window.localStorage.getItem(PROFILES_PASSWORD_STORAGE_KEY)) {
+            window.localStorage.setItem(PROFILES_PASSWORD_STORAGE_KEY, DEFAULT_PROFILES_PASSWORD);
+          }
+        } else {
+          setStorageWarning("El perfil activo no podra recordarse al cerrar la aplicacion");
+        }
+
+        setProfiles(loadedProfiles);
+        setActiveProfileId(nextActiveProfileId);
+        setMode(nextActiveProfileId ? "view" : "profiles");
+        setPasswordGateScope("profiles");
+        setPasswordGateMode(nextActiveProfileId ? null : "verify");
+      } catch (cause: unknown) {
+        if (isCancelled) {
+          return;
+        }
+
+        const message = cause instanceof Error ? cause.message : "No se pudieron cargar los perfiles.";
+        setError(message);
+        setProfiles([]);
+        setActiveProfileId(null);
+        setIsProfileAccessGranted(true);
+        setMode("profiles");
+      }
     }
+
+    void loadProfiles();
+    return () => {
+      isCancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -328,7 +333,7 @@ export function App() {
   }, [activeProfileId, data, profiles]);
 
   const activeDay = data?.days.find((day) => day.id === activeDayId) ?? null;
-  const days = data?.days ?? [];
+  const days = data?.days ?? EMPTY_DAYS;
   const activeProfile = profiles.find((profile) => profile.id === activeProfileId) ?? null;
   const iconsLibrary = Object.values(data?.iconsByDay ?? {}).flat();
   const activeDrawingLines = activeDayId ? data?.mapDrawingLinesByDay[activeDayId] ?? [] : [];
@@ -336,7 +341,7 @@ export function App() {
   const activeMapLabels = activeDayId ? data?.mapLabelsByDay[activeDayId] ?? [] : [];
   const allMapPlacements = useMemo(() => Object.values(data?.mapPlacementsByDay ?? {}).flat(), [data?.mapPlacementsByDay]);
   const placementById = useMemo(() => new Map(allMapPlacements.map((placement) => [placement.id, placement] as const)), [allMapPlacements]);
-  const transitions = data?.mapIconTransitions ?? [];
+  const transitions = data?.mapIconTransitions ?? EMPTY_MAP_TRANSITIONS;
   const isEditMode = mode === "edit";
   const isViewMode = mode === "view";
   const isReadOnlyMode = isViewMode;
@@ -439,6 +444,22 @@ export function App() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [passwordGateMode, profileModalMode]);
+
+  useEffect(() => {
+    if (!profileModalMode) {
+      return;
+    }
+
+    const animationFrame = window.requestAnimationFrame(() => {
+      profileNameInputRef.current?.focus();
+
+      if (profileModalMode === "edit") {
+        profileNameInputRef.current?.select();
+      }
+    });
+
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [profileModalMode]);
 
   useEffect(() => {
     if (!transitionEditing) {
@@ -923,18 +944,24 @@ export function App() {
   }
 
   async function handlePickContentResource(tipoContenido: MediaContentType) {
-    const selectedPath = await window.mapaMalvinas.selectContentResource({
-      tipoContenido
-    });
+    try {
+      const selectedPath = await window.mapaMalvinas.selectContentResource({
+        tipoContenido
+      });
 
-    if (!selectedPath) {
-      return;
-    }
+      if (!selectedPath) {
+        return;
+      }
 
-    if (tipoContenido === "imagen") {
-      setContentImagePath(selectedPath);
-    } else {
-      setContentVideoPath(selectedPath);
+      if (tipoContenido === "imagen") {
+        setContentImagePath(selectedPath);
+      } else {
+        setContentVideoPath(selectedPath);
+      }
+      setError(null);
+    } catch (cause: unknown) {
+      const message = cause instanceof Error ? cause.message : "No se pudo leer el recurso seleccionado.";
+      setError(message);
     }
   }
 
@@ -1249,17 +1276,6 @@ export function App() {
     setSelectedPlacement(placement);
   }
 
-  function persistProfiles(nextProfiles: MalvinasProfile[]) {
-    setProfiles(nextProfiles);
-
-    if (!canUseLocalStorage()) {
-      setStorageWarning("Activa el almacenamiento local para guardar los perfiles");
-      return;
-    }
-
-    window.localStorage.setItem(PROFILES_STORAGE_KEY, JSON.stringify(nextProfiles));
-  }
-
   function persistActiveProfile(profileId: string | null) {
     setActiveProfileId(profileId);
 
@@ -1311,7 +1327,7 @@ export function App() {
     setProfileFormError(null);
   }
 
-  function handleSaveProfile(event: FormEvent<HTMLFormElement>) {
+  async function handleSaveProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (!profileForm.name.trim()) {
@@ -1320,21 +1336,37 @@ export function App() {
     }
 
     if (profileModalMode === "edit" && editingProfileId) {
-      const nextProfiles = profiles.map((profile) =>
-        profile.id === editingProfileId ? profileFromForm(profileForm, profile) : profile
-      );
-      persistProfiles(nextProfiles);
-      handleCloseProfileModal();
+      const currentProfile = profiles.find((profile) => profile.id === editingProfileId);
+
+      if (!currentProfile) {
+        setProfileFormError("No se encontro el perfil que quieres editar.");
+        return;
+      }
+
+      try {
+        const nextProfiles = await window.mapaMalvinas.saveProfile(profileFromForm(profileForm, currentProfile));
+        setProfiles(nextProfiles);
+        handleCloseProfileModal();
+      } catch (cause: unknown) {
+        const message = cause instanceof Error ? cause.message : "No se pudo guardar el perfil.";
+        setProfileFormError(message);
+      }
       return;
     }
 
     const nextProfile = profileFromForm(profileForm);
-    const nextProfiles = [...profiles, nextProfile];
-    persistProfiles(nextProfiles);
-    persistActiveProfile(nextProfile.id);
-    setIsProfileAccessGranted(false);
-    handleCloseProfileModal();
-    setMode("menu");
+
+    try {
+      const nextProfiles = await window.mapaMalvinas.saveProfile(nextProfile);
+      setProfiles(nextProfiles);
+      persistActiveProfile(nextProfile.id);
+      setIsProfileAccessGranted(false);
+      handleCloseProfileModal();
+      setMode("menu");
+    } catch (cause: unknown) {
+      const message = cause instanceof Error ? cause.message : "No se pudo crear el perfil.";
+      setProfileFormError(message);
+    }
   }
 
   async function handleDeleteEditingProfile() {
@@ -1351,18 +1383,60 @@ export function App() {
     try {
       await window.mapaMalvinas.deleteProfileData(editingProfileId);
       const remainingProfiles = profiles.filter((profile) => profile.id !== editingProfileId);
-      const nextProfiles = remainingProfiles.length ? remainingProfiles : [createDefaultProfile()];
       const nextActiveProfileId =
-        activeProfileId && nextProfiles.some((profile) => profile.id === activeProfileId)
+        activeProfileId && remainingProfiles.some((profile) => profile.id === activeProfileId)
           ? activeProfileId
-          : nextProfiles[0]?.id ?? null;
+          : remainingProfiles[0]?.id ?? null;
 
-      persistProfiles(nextProfiles);
+      setProfiles(remainingProfiles);
       persistActiveProfile(nextActiveProfileId);
       handleCloseProfileModal();
     } catch (cause: unknown) {
       const message = cause instanceof Error ? cause.message : "No se pudo eliminar el perfil.";
       setProfileFormError(message);
+    }
+  }
+
+  async function handleExportProfiles() {
+    setIsProfileTransferRunning(true);
+    setProfileTransferMessage(null);
+    setProfileTransferError(null);
+
+    try {
+      const result = await window.mapaMalvinas.exportProfiles();
+
+      if (!result.canceled) {
+        setProfileTransferMessage(
+          `${result.profileCount} ${result.profileCount === 1 ? "perfil exportado" : "perfiles exportados"} correctamente.`
+        );
+      }
+    } catch (cause: unknown) {
+      const message = cause instanceof Error ? cause.message : "No se pudieron exportar los perfiles.";
+      setProfileTransferError(message);
+    } finally {
+      setIsProfileTransferRunning(false);
+    }
+  }
+
+  async function handleImportProfiles() {
+    setIsProfileTransferRunning(true);
+    setProfileTransferMessage(null);
+    setProfileTransferError(null);
+
+    try {
+      const result = await window.mapaMalvinas.importProfiles();
+
+      if (!result.canceled) {
+        setProfiles(result.profiles);
+        setProfileTransferMessage(
+          `${result.importedCount} ${result.importedCount === 1 ? "perfil agregado" : "perfiles agregados"} correctamente.`
+        );
+      }
+    } catch (cause: unknown) {
+      const message = cause instanceof Error ? cause.message : "No se pudieron importar los perfiles.";
+      setProfileTransferError(message);
+    } finally {
+      setIsProfileTransferRunning(false);
     }
   }
 
@@ -1572,6 +1646,7 @@ export function App() {
             <input
               onChange={(event) => setProfileForm((current) => ({ ...current, name: event.target.value }))}
               placeholder="Nombre del perfil"
+              ref={profileNameInputRef}
               type="text"
               value={profileForm.name}
             />
@@ -1705,12 +1780,32 @@ export function App() {
             </button>
           </div>
 
-          <button className="manage-profiles-button" onClick={() => setMode("profile-admin")} type="button">
-            Administrar perfiles
-          </button>
+          <div className="profile-main-actions">
+            <button className="manage-profiles-button" onClick={() => setMode("profile-admin")} type="button">
+              Administrar perfiles
+            </button>
+            <button
+              className="manage-profiles-button"
+              disabled={isProfileTransferRunning || profiles.length === 0}
+              onClick={handleExportProfiles}
+              type="button"
+            >
+              Exportar Perfiles
+            </button>
+            <button
+              className="manage-profiles-button"
+              disabled={isProfileTransferRunning}
+              onClick={handleImportProfiles}
+              type="button"
+            >
+              Importar Perfiles
+            </button>
+          </div>
         </section>
 
         {storageWarning ? <div className="error-toast">{storageWarning}</div> : null}
+        {profileTransferMessage ? <div className="profile-transfer-toast">{profileTransferMessage}</div> : null}
+        {profileTransferError ? <div className="error-toast">{profileTransferError}</div> : null}
         {renderProfileModal()}
         {renderPasswordGate()}
       </main>
@@ -1961,7 +2056,14 @@ export function App() {
                 Cargar imagen
               </button>
               <span className="content-resource-name" title={contentImagePath ?? ""}>
-                {contentImagePath ? contentImagePath.split(/[\\/]/).pop() : "Sin archivo"}
+                {contentImagePath
+                  ? `${contentImagePath.split(/[\\/]/).pop()}${
+                      contentImagePath === editingPlacement.rutaImagenLocal &&
+                      editingPlacement.imagenEstado !== "available"
+                        ? " - NO DISPONIBLE"
+                        : ""
+                    }`
+                  : "Sin archivo"}
               </span>
             </div>
 
@@ -1974,7 +2076,14 @@ export function App() {
                 Cargar video
               </button>
               <span className="content-resource-name" title={contentVideoPath ?? ""}>
-                {contentVideoPath ? contentVideoPath.split(/[\\/]/).pop() : "Sin archivo"}
+                {contentVideoPath
+                  ? `${contentVideoPath.split(/[\\/]/).pop()}${
+                      contentVideoPath === editingPlacement.rutaVideoLocal &&
+                      editingPlacement.videoEstado !== "available"
+                        ? " - NO DISPONIBLE"
+                        : ""
+                    }`
+                  : "Sin archivo"}
               </span>
             </div>
 
@@ -2416,6 +2525,7 @@ export function App() {
                       <img
                         alt={selectedPlacement.nombreIcono ?? "Imagen del contenido"}
                         className="content-viewer-media"
+                        onError={() => setError("No se pudo leer la imagen de este icono.")}
                         src={selectedPlacement.imagenDataUrl}
                       />
                     </figure>
@@ -2423,7 +2533,12 @@ export function App() {
 
                   {selectedPlacement.videoDataUrl ? (
                     <div className="content-viewer-media-frame">
-                      <video className="content-viewer-media" controls src={selectedPlacement.videoDataUrl} />
+                      <video
+                        className="content-viewer-media"
+                        controls
+                        onError={() => setError("No se pudo reproducir el video de este icono.")}
+                        src={selectedPlacement.videoDataUrl}
+                      />
                     </div>
                   ) : null}
                 </div>
