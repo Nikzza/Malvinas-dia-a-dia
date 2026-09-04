@@ -194,7 +194,7 @@ export function App() {
   const [contentTrajectoryIdentifier, setContentTrajectoryIdentifier] = useState("");
   const [contentTitle, setContentTitle] = useState("");
   const [contentText, setContentText] = useState("");
-  const [contentImagePath, setContentImagePath] = useState<string | null>(null);
+  const [contentImagePaths, setContentImagePaths] = useState<string[]>([]);
   const [contentVideoPath, setContentVideoPath] = useState<string | null>(null);
   const [isDrawingPanelOpen, setIsDrawingPanelOpen] = useState(false);
   const [isDrawingEnabled, setIsDrawingEnabled] = useState(false);
@@ -204,6 +204,7 @@ export function App() {
   const [drawingTool, setDrawingTool] = useState<MapDrawingTool>("freehand");
   const [mode, setMode] = useState<AppMode>("profiles");
   const [selectedPlacement, setSelectedPlacement] = useState<MapIconPlacement | null>(null);
+  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [transitionEditing, setTransitionEditing] = useState<TransitionEditingState | null>(null);
   const [animatedPlacementPositions, setAnimatedPlacementPositions] = useState<Record<number, { x: number; y: number }>>({});
   const [isDayTransitionRunning, setIsDayTransitionRunning] = useState(false);
@@ -420,11 +421,27 @@ export function App() {
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         setSelectedPlacement(null);
+        return;
+      }
+
+      const imageCount = selectedPlacement.imagenes.filter((image) => image.imagenDataUrl).length;
+
+      if (imageCount > 1 && event.key === "ArrowLeft") {
+        event.preventDefault();
+        setSelectedImageIndex((current) => (current - 1 + imageCount) % imageCount);
+      } else if (imageCount > 1 && event.key === "ArrowRight") {
+        event.preventDefault();
+        setSelectedImageIndex((current) => (current + 1) % imageCount);
       }
     }
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedPlacement]);
+
+  useEffect(() => {
+    const imageCount = selectedPlacement?.imagenes.filter((image) => image.imagenDataUrl).length ?? 0;
+    setSelectedImageIndex((current) => (imageCount ? Math.min(current, imageCount - 1) : 0));
   }, [selectedPlacement]);
 
   useEffect(() => {
@@ -852,8 +869,26 @@ export function App() {
     setContentTrajectoryIdentifier(String(placement.trajectoryIdentifier));
     setContentTitle(placement.tituloContenido ?? "");
     setContentText(placement.textoDescriptivo ?? "");
-    setContentImagePath(placement.rutaImagenLocal ?? null);
+    setContentImagePaths(placement.imagenes.map((image) => image.rutaImagenLocal));
     setContentVideoPath(placement.rutaVideoLocal ?? null);
+  }
+
+  function handleMoveContentImage(imageIndex: number, direction: -1 | 1) {
+    setContentImagePaths((current) => {
+      const targetIndex = imageIndex + direction;
+
+      if (targetIndex < 0 || targetIndex >= current.length) {
+        return current;
+      }
+
+      const reordered = [...current];
+      [reordered[imageIndex], reordered[targetIndex]] = [reordered[targetIndex], reordered[imageIndex]];
+      return reordered;
+    });
+  }
+
+  function handleRemoveContentImage(imageIndex: number) {
+    setContentImagePaths((current) => current.filter((_, index) => index !== imageIndex));
   }
 
   async function handleCreateMapLabel(style: MapLabelStyle, posXPct: number, posYPct: number) {
@@ -945,18 +980,21 @@ export function App() {
 
   async function handlePickContentResource(tipoContenido: MediaContentType) {
     try {
-      const selectedPath = await window.mapaMalvinas.selectContentResource({
+      const selectedPaths = await window.mapaMalvinas.selectContentResource({
         tipoContenido
       });
 
-      if (!selectedPath) {
+      if (!selectedPaths.length) {
         return;
       }
 
       if (tipoContenido === "imagen") {
-        setContentImagePath(selectedPath);
+        setContentImagePaths((current) => [
+          ...current,
+          ...selectedPaths.filter((selectedPath) => !current.includes(selectedPath))
+        ]);
       } else {
-        setContentVideoPath(selectedPath);
+        setContentVideoPath(selectedPaths[0] ?? null);
       }
       setError(null);
     } catch (cause: unknown) {
@@ -983,7 +1021,7 @@ export function App() {
         trajectoryIdentifier,
         tituloContenido: contentTitle.trim() || null,
         textoDescriptivo: contentText || null,
-        rutaImagenLocal: contentImagePath,
+        rutasImagenesLocales: contentImagePaths,
         rutaVideoLocal: contentVideoPath
       });
       setData(nextData);
@@ -1267,12 +1305,15 @@ export function App() {
   function handleOpenPlacementViewer(placement: MapIconPlacement) {
     const hasTitle = Boolean(placement.tituloContenido?.trim());
     const hasText = Boolean(placement.textoDescriptivo?.trim());
-    const hasResource = Boolean(placement.imagenDataUrl || placement.videoDataUrl);
+    const hasResource = Boolean(
+      placement.imagenes.some((image) => image.imagenDataUrl) || placement.videoDataUrl
+    );
 
     if (!hasTitle && !hasText && !hasResource) {
       return;
     }
 
+    setSelectedImageIndex(0);
     setSelectedPlacement(placement);
   }
 
@@ -1869,7 +1910,7 @@ export function App() {
           <span className="menu-corner bottom-left" />
           <span className="menu-corner bottom-right" />
           <div className="menu-eyebrow">MUSEO MALVINAS &middot; AYAS</div>
-          <h1>Malvinas<br />Dia X Dia</h1>
+          <h1>Mapa de Eventos<br />Malvinas</h1>
           <div className="menu-divider" />
           <p>{activeProfile ? `Perfil activo: ${activeProfile.name}` : "Selecciona el modo de ingreso"}</p>
 
@@ -1893,6 +1934,9 @@ export function App() {
       </main>
     );
   }
+
+  const carouselImages = selectedPlacement?.imagenes.filter((image) => image.imagenDataUrl) ?? [];
+  const selectedCarouselImage = carouselImages[selectedImageIndex] ?? carouselImages[0] ?? null;
 
   return (
     <main className="experience-shell">
@@ -2053,18 +2097,58 @@ export function App() {
                 onClick={() => void handlePickContentResource("imagen")}
                 type="button"
               >
-                Cargar imagen
+                Cargar imagenes
               </button>
-              <span className="content-resource-name" title={contentImagePath ?? ""}>
-                {contentImagePath
-                  ? `${contentImagePath.split(/[\\/]/).pop()}${
-                      contentImagePath === editingPlacement.rutaImagenLocal &&
-                      editingPlacement.imagenEstado !== "available"
-                        ? " - NO DISPONIBLE"
-                        : ""
-                    }`
-                  : "Sin archivo"}
-              </span>
+              {contentImagePaths.length ? (
+                <div className="content-image-list">
+                  {contentImagePaths.map((imagePath, imageIndex) => {
+                    const savedImage = editingPlacement.imagenes.find(
+                      (image) => image.rutaImagenLocal === imagePath
+                    );
+                    const isUnavailable = savedImage && savedImage.imagenEstado !== "available";
+
+                    return (
+                      <div className="content-image-item" key={`${imagePath}-${imageIndex}`}>
+                        <span className="content-image-position">{imageIndex + 1}</span>
+                        <span className="content-image-name" title={imagePath}>
+                          {imagePath.split(/[\\/]/).pop()}
+                          {isUnavailable ? " - NO DISPONIBLE" : ""}
+                        </span>
+                        <div className="content-image-actions">
+                          <button
+                            aria-label={`Mover imagen ${imageIndex + 1} hacia arriba`}
+                            className="content-image-order-button"
+                            disabled={imageIndex === 0}
+                            onClick={() => handleMoveContentImage(imageIndex, -1)}
+                            type="button"
+                          >
+                            &uarr;
+                          </button>
+                          <button
+                            aria-label={`Mover imagen ${imageIndex + 1} hacia abajo`}
+                            className="content-image-order-button"
+                            disabled={imageIndex === contentImagePaths.length - 1}
+                            onClick={() => handleMoveContentImage(imageIndex, 1)}
+                            type="button"
+                          >
+                            &darr;
+                          </button>
+                          <button
+                            aria-label={`Eliminar imagen ${imageIndex + 1}`}
+                            className="content-image-delete-button"
+                            onClick={() => handleRemoveContentImage(imageIndex)}
+                            type="button"
+                          >
+                            x
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <span className="content-resource-name">Sin imagenes</span>
+              )}
             </div>
 
             <div className="content-resource-row">
@@ -2513,22 +2597,55 @@ export function App() {
 
             <div
               className={
-                selectedPlacement.imagenDataUrl || selectedPlacement.videoDataUrl
+                carouselImages.length || selectedPlacement.videoDataUrl
                   ? "content-viewer-body"
                   : "content-viewer-body text-only"
               }
             >
-              {selectedPlacement.imagenDataUrl || selectedPlacement.videoDataUrl ? (
+              {carouselImages.length || selectedPlacement.videoDataUrl ? (
                 <div className="content-viewer-media-column">
-                  {selectedPlacement.imagenDataUrl ? (
-                    <figure className="content-viewer-media-frame">
+                  {selectedCarouselImage ? (
+                    <div className={`content-image-carousel${carouselImages.length > 1 ? "" : " single"}`}>
+                      {carouselImages.length > 1 ? (
+                        <button
+                          aria-label="Mostrar imagen anterior"
+                          className="content-carousel-button previous"
+                          onClick={() =>
+                            setSelectedImageIndex(
+                              (current) => (current - 1 + carouselImages.length) % carouselImages.length
+                            )
+                          }
+                          type="button"
+                        >
+                          &lsaquo;
+                        </button>
+                      ) : null}
+                      <figure className="content-viewer-media-frame carousel-frame">
                       <img
-                        alt={selectedPlacement.nombreIcono ?? "Imagen del contenido"}
+                        alt={`${selectedPlacement.nombreIcono ?? "Imagen del contenido"} ${selectedImageIndex + 1}`}
                         className="content-viewer-media"
                         onError={() => setError("No se pudo leer la imagen de este icono.")}
-                        src={selectedPlacement.imagenDataUrl}
+                        src={selectedCarouselImage.imagenDataUrl ?? undefined}
                       />
-                    </figure>
+                        {carouselImages.length > 1 ? (
+                          <figcaption className="content-carousel-counter">
+                            {selectedImageIndex + 1} / {carouselImages.length}
+                          </figcaption>
+                        ) : null}
+                      </figure>
+                      {carouselImages.length > 1 ? (
+                        <button
+                          aria-label="Mostrar imagen siguiente"
+                          className="content-carousel-button next"
+                          onClick={() =>
+                            setSelectedImageIndex((current) => (current + 1) % carouselImages.length)
+                          }
+                          type="button"
+                        >
+                          &rsaquo;
+                        </button>
+                      ) : null}
+                    </div>
                   ) : null}
 
                   {selectedPlacement.videoDataUrl ? (

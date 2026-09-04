@@ -60,7 +60,7 @@ export function SidePanel({
             value={newDayLabel}
           />
           <button className="panel-action primary" disabled={isSavingDay} onClick={handleSubmit} type="button">
-            {isSavingDay ? "Guardando..." : "Agregar dia"}
+            {isSavingDay ? "Guardando..." : "Agregar evento"}
           </button>
         </div>
       ) : (

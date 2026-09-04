@@ -55,7 +55,7 @@ declare global {
       updateMapLabelContent: (payload: UpdateMapLabelContentPayload) => Promise<BootstrapData>;
       deleteMapLabel: (payload: DeleteMapLabelPayload) => Promise<BootstrapData>;
       updateMapIconPlacementContent: (payload: UpdateMapIconPlacementContentPayload) => Promise<BootstrapData>;
-      selectContentResource: (payload: SelectContentResourcePayload) => Promise<string | null>;
+      selectContentResource: (payload: SelectContentResourcePayload) => Promise<string[]>;
     };
   }
 }

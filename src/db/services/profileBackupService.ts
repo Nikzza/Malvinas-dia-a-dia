@@ -81,6 +81,12 @@ function getReferencedResources(db: Database.Database) {
   collect(`SELECT ruta_recurso_local AS stored_path FROM eventos WHERE id_dia IN (${profileDays})`);
   collect(`SELECT ruta_icono_local AS stored_path FROM iconos_dia WHERE id_dia IN (${profileDays})`);
   collect(`SELECT ruta_imagen_local AS stored_path FROM iconos_mapa WHERE id_dia IN (${profileDays})`);
+  collect(`
+    SELECT imagenes_iconos_mapa.ruta_imagen_local AS stored_path
+    FROM imagenes_iconos_mapa
+    INNER JOIN iconos_mapa ON iconos_mapa.id = imagenes_iconos_mapa.id_colocacion_icono
+    WHERE iconos_mapa.id_dia IN (${profileDays})
+  `);
   collect(`SELECT ruta_video_local AS stored_path FROM iconos_mapa WHERE id_dia IN (${profileDays})`);
   return [...resources];
 }
@@ -257,6 +263,12 @@ function readRows(db: Database.Database, tableName: string, whereClause = "", pa
   return db.prepare(`SELECT * FROM ${tableName} ${whereClause}`).all(...parameters) as DatabaseRow[];
 }
 
+function tableExists(db: Database.Database, tableName: string) {
+  return Boolean(
+    db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(tableName)
+  );
+}
+
 function toNumber(value: string | number | null) {
   return Number(value);
 }
@@ -348,6 +360,31 @@ async function prepareImportedRows(
   const labels = byDays("etiquetas_mapa");
   const placementIds = placements.map((row) => toNumber(row.id));
   const placementPlaceholders = placementIds.map(() => "?").join(", ");
+  const placementImages =
+    placementIds.length && tableExists(sourceDb, "imagenes_iconos_mapa")
+      ? readRows(
+          sourceDb,
+          "imagenes_iconos_mapa",
+          `WHERE id_colocacion_icono IN (${placementPlaceholders}) ORDER BY orden ASC, id ASC`,
+          placementIds
+        )
+      : [];
+  const placementsWithImages = new Set(
+    placementImages.map((image) => toNumber(image.id_colocacion_icono))
+  );
+
+  for (const placement of placements) {
+    if (placement.ruta_imagen_local && !placementsWithImages.has(toNumber(placement.id))) {
+      placementImages.push({
+        id: -toNumber(placement.id),
+        id_colocacion_icono: toNumber(placement.id),
+        ruta_imagen_local: placement.ruta_imagen_local,
+        orden: 0,
+        created_at: placement.created_at,
+        updated_at: placement.updated_at
+      });
+    }
+  }
   const transitions = placementIds.length
     ? readRows(
         sourceDb,
@@ -405,7 +442,17 @@ async function prepareImportedRows(
     );
   }
 
-  return { profileRows, days, events, dayIcons, placements, drawingLines, labels, transitions };
+  for (const image of placementImages) {
+    image.ruta_imagen_local = await importResourcePath(
+      stageDirectory,
+      image.ruta_imagen_local,
+      "image",
+      resourceCache,
+      verifiedFiles
+    );
+  }
+
+  return { profileRows, days, events, dayIcons, placements, placementImages, drawingLines, labels, transitions };
 }
 
 function insertImportedRows(rows: Awaited<ReturnType<typeof prepareImportedRows>>) {
@@ -497,6 +544,21 @@ function insertImportedRows(rows: Awaited<ReturnType<typeof prepareImportedRows>
         row.updated_at
       );
       placementIdMap.set(toNumber(row.id), Number(result.lastInsertRowid));
+    }
+
+    const insertPlacementImage = db.prepare(`
+      INSERT INTO imagenes_iconos_mapa (
+        id_colocacion_icono, ruta_imagen_local, orden, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?)
+    `);
+    for (const row of rows.placementImages) {
+      insertPlacementImage.run(
+        placementIdMap.get(toNumber(row.id_colocacion_icono)),
+        row.ruta_imagen_local,
+        row.orden,
+        row.created_at,
+        row.updated_at
+      );
     }
 
     const insertLine = db.prepare(

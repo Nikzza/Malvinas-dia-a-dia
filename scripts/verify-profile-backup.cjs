@@ -4,6 +4,8 @@ const os = require("node:os");
 const path = require("node:path");
 const { app } = require("electron");
 
+app.disableHardwareAcceleration();
+
 async function run() {
   const testRoot = fs.mkdtempSync(path.join(os.tmpdir(), "malvinas-backup-test-"));
   const documentsDirectory = path.join(testRoot, "documents");
@@ -13,6 +15,7 @@ async function run() {
 
   const { getDatabase, initDatabase } = require("../dist-electron/db/connection.js");
   const { profileRepository } = require("../dist-electron/db/repositories/profileRepository.js");
+  const { mapIconPlacementRepository } = require("../dist-electron/db/repositories/mapIconPlacementRepository.js");
   const { storeManagedBuffer } = require("../dist-electron/db/services/managedAssetService.js");
   const {
     exportProfilesBackup,
@@ -39,6 +42,7 @@ async function run() {
 
   const iconPath = await storeManagedBuffer(Buffer.from("icon-resource"), "icon", ".png");
   const imagePath = await storeManagedBuffer(Buffer.from("image-resource"), "image", ".png");
+  const secondImagePath = await storeManagedBuffer(Buffer.from("second-image-resource"), "image", ".jpg");
   const videoPath = await storeManagedBuffer(Buffer.from("video-resource"), "video", ".mp4");
   const dayId = Number(
     db.prepare(
@@ -67,6 +71,14 @@ async function run() {
       ) VALUES (?, ?, ?, ?, ?)`
     ).run(dayId, iconId, 7, 40, 50).lastInsertRowid
   );
+  mapIconPlacementRepository.updateContent(
+    firstPlacementId,
+    7,
+    "ARA Test",
+    "Contenido",
+    [imagePath, secondImagePath],
+    videoPath
+  );
   db.prepare(
     `INSERT INTO transiciones_iconos_mapa (
       id_colocacion_origen, id_colocacion_destino, puntos_pct_json, velocidades_json
@@ -84,7 +96,7 @@ async function run() {
     ) VALUES (?, ?, ?, ?, ?, ?, ?)`
   ).run(dayId, 10, 15, "info", "texto", "Evento", "Titulo");
 
-  const packagePath = path.join(testRoot, "profiles.malvinas");
+  const packagePath = path.join(testRoot, "profiles.mape");
   const exported = await exportProfilesBackup(packagePath, "test");
   assert.equal(exported.profileCount, 1);
   assert.equal(fs.existsSync(packagePath), true);
@@ -96,6 +108,7 @@ async function run() {
   assert.equal(db.prepare("SELECT COUNT(*) AS count FROM dias").get().count, 2);
   assert.equal(db.prepare("SELECT COUNT(*) AS count FROM iconos_dia").get().count, 2);
   assert.equal(db.prepare("SELECT COUNT(*) AS count FROM iconos_mapa").get().count, 4);
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM imagenes_iconos_mapa").get().count, 4);
   assert.equal(db.prepare("SELECT COUNT(*) AS count FROM transiciones_iconos_mapa").get().count, 2);
   assert.equal(db.prepare("SELECT COUNT(*) AS count FROM lineas_mapa").get().count, 2);
   assert.equal(db.prepare("SELECT COUNT(*) AS count FROM etiquetas_mapa").get().count, 2);
@@ -104,7 +117,7 @@ async function run() {
 
   const importedPlacement = db
     .prepare(
-      `SELECT ruta_imagen_local, ruta_video_local
+      `SELECT id, ruta_imagen_local, ruta_video_local
        FROM iconos_mapa
        WHERE ruta_imagen_local IS NOT NULL AND ruta_video_local IS NOT NULL
        ORDER BY id DESC LIMIT 1`
@@ -113,6 +126,17 @@ async function run() {
   const { resolveStoredResourcePath } = require("../dist-electron/db/services/managedAssetService.js");
   assert.equal(fs.existsSync(resolveStoredResourcePath(importedPlacement.ruta_imagen_local)), true);
   assert.equal(fs.existsSync(resolveStoredResourcePath(importedPlacement.ruta_video_local)), true);
+  const importedImages = db
+    .prepare(
+      `SELECT ruta_imagen_local, orden
+       FROM imagenes_iconos_mapa
+       WHERE id_colocacion_icono = ?
+       ORDER BY orden ASC, id ASC`
+    )
+    .all(importedPlacement.id);
+  assert.equal(importedImages.length, 2);
+  assert.deepEqual(importedImages.map((image) => image.orden), [0, 1]);
+  assert.equal(importedImages.every((image) => fs.existsSync(resolveStoredResourcePath(image.ruta_imagen_local))), true);
 
   db.close();
   fs.rmSync(testRoot, { recursive: true, force: true });

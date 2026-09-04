@@ -194,7 +194,7 @@ export function TopTimeline({
 
               {isEditable ? (
                 <button
-                  aria-label={day.esEventoDestacado ? `Quitar ${day.etiquetaFecha} de eventos` : `Destacar ${day.etiquetaFecha} como evento`}
+                  aria-label={day.esEventoDestacado ? `Quitar ${day.etiquetaFecha} de destacados` : `Agregar ${day.etiquetaFecha} a destacados`}
                   className={day.esEventoDestacado ? "timeline-feature-button active" : "timeline-feature-button"}
                   onClick={(event) => {
                     event.stopPropagation();
@@ -294,7 +294,7 @@ export function TopTimeline({
         ) : isEditable ? (
           <button className="timeline-box add-box" disabled={isSavingDay} onClick={() => setIsAdding(true)} type="button">
             <span className="timeline-add-symbol">+</span>
-            <span>{isCreatingDay ? "Guardando..." : "Agregar dia"}</span>
+            <span>{isCreatingDay ? "Guardando..." : "Agregar evento"}</span>
           </button>
         ) : null}
       </div>

@@ -585,7 +585,7 @@ textarea:focus-visible {
   gap: 9px;
   width: 260px;
   height: 54px;
-  padding: 9px 14px;
+  padding: 9px 2px 9px 14px;
   border-top: 0.5px solid rgba(129, 210, 247, 0.13);
   background: rgba(13, 26, 46, 0.94);
 }
@@ -595,7 +595,8 @@ textarea:focus-visible {
   align-items: center;
   gap: 8px;
   min-width: 0;
-  max-width: 230px;
+  width: fit-content;
+  max-width: 100%;
   height: 34px;
   padding: 3px 10px 3px 4px;
   border: 0.5px solid rgba(129, 210, 247, 0.28);
@@ -1609,10 +1610,10 @@ textarea:focus-visible {
 }
 
 .placed-icon-label {
-  max-width: 120px;
+  width: max-content;
+  max-width: 220px;
   margin-top: 12px;
   padding: 3px 8px;
-  overflow: hidden;
   border: 0.5px solid rgba(219, 176, 96, 0.35);
   border-radius: 5px;
   background: rgba(13, 26, 46, 0.90);
@@ -1620,8 +1621,9 @@ textarea:focus-visible {
   font-size: 9px;
   letter-spacing: 0.09em;
   line-height: 1.2;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  text-align: center;
+  white-space: normal;
 }
 
 .map-label-wrap {
@@ -2381,6 +2383,70 @@ textarea:focus-visible {
   white-space: nowrap;
 }
 
+.content-image-list {
+  display: grid;
+  gap: 6px;
+  max-height: 190px;
+  overflow-y: auto;
+  padding-right: 3px;
+}
+
+.content-image-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 5px 6px 5px 9px;
+  border: 0.5px solid rgba(129, 210, 247, 0.18);
+  border-radius: 7px;
+  background: rgba(22, 58, 97, 0.22);
+}
+
+.content-image-position {
+  color: var(--celeste);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.content-image-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--texto-muted);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.content-image-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.content-image-order-button,
+.content-image-delete-button {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0.5px solid rgba(129, 210, 247, 0.28);
+  border-radius: 5px;
+  background: rgba(13, 26, 46, 0.72);
+  color: var(--celeste);
+  font-size: 13px;
+  line-height: 1;
+}
+
+.content-image-order-button:disabled {
+  cursor: default;
+  opacity: 0.25;
+}
+
+.content-image-delete-button {
+  border-color: rgba(219, 80, 80, 0.48);
+  color: rgba(219, 80, 80, 0.90);
+}
+
 .content-viewer-card {
   width: min(860px, calc(100vw - 64px));
   max-height: min(78vh, 760px);
@@ -2409,15 +2475,63 @@ textarea:focus-visible {
   gap: 12px;
   max-height: min(58vh, 540px);
   overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.content-viewer-media-column::-webkit-scrollbar {
+  display: none;
+}
+
+.content-image-carousel {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) 30px;
+  align-items: center;
+  gap: 8px;
+}
+
+.content-image-carousel.single {
+  display: block;
+}
+
+.content-carousel-button {
+  width: 30px;
+  height: 64px;
+  padding: 0;
+  border: 0.5px solid rgba(129, 210, 247, 0.30);
+  border-radius: 7px;
+  background: rgba(13, 26, 46, 0.86);
+  color: var(--celeste);
+  font-size: 30px;
+  font-weight: 300;
+  line-height: 1;
+}
+
+.content-carousel-button:hover {
+  border-color: var(--celeste);
+  background: rgba(22, 58, 97, 0.86);
 }
 
 .content-viewer-media-frame {
+  position: relative;
   min-height: 240px;
   margin: 0;
   overflow: hidden;
   border: 0.5px solid rgba(129, 210, 247, 0.16);
   border-radius: 8px;
   background: rgba(22, 58, 97, 0.30);
+}
+
+.content-carousel-counter {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  padding: 4px 7px;
+  border: 0.5px solid rgba(129, 210, 247, 0.24);
+  border-radius: 6px;
+  background: rgba(13, 26, 46, 0.82);
+  color: var(--celeste);
+  font-size: 9px;
+  letter-spacing: 0.08em;
 }
 
 .content-viewer-media {
@@ -2470,12 +2584,12 @@ textarea:focus-visible {
 
   .profile-topbar-left {
     width: 128px;
-    padding: 9px 8px;
+    padding: 9px 2px 9px 8px;
   }
 
   .active-profile-chip {
     display: flex;
-    max-width: 112px;
+    max-width: 100%;
   }
 
   .topbar-actions {
