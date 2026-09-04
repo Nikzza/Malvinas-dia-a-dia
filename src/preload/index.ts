@@ -82,7 +82,7 @@ const api = {
   updateMapIconPlacementContent: (payload: UpdateMapIconPlacementContentPayload) =>
     ipcRenderer.invoke("map-icons:update-content", payload, requireActiveProfileId()) as Promise<BootstrapData>,
   selectContentResource: (payload: SelectContentResourcePayload) =>
-    ipcRenderer.invoke("content:select-resource", payload) as Promise<string | null>
+    ipcRenderer.invoke("content:select-resource", payload) as Promise<string[]>
 };
 
 contextBridge.exposeInMainWorld("mapaMalvinas", api);

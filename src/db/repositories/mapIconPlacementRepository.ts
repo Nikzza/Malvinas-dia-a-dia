@@ -16,6 +16,15 @@ type MapIconPlacementRow = {
   updated_at: string;
 };
 
+type MapIconPlacementImageRow = {
+  id: number;
+  id_colocacion_icono: number;
+  ruta_imagen_local: string;
+  orden: number;
+  created_at: string;
+  updated_at: string;
+};
+
 export const mapIconPlacementRepository = {
   listAll: (): MapIconPlacement[] => {
     const db = getDatabase();
@@ -28,21 +37,49 @@ export const mapIconPlacementRepository = {
         `
       )
       .all() as MapIconPlacementRow[];
+    const imageRows = db
+      .prepare(
+        `
+          SELECT id, id_colocacion_icono, ruta_imagen_local, orden, created_at, updated_at
+          FROM imagenes_iconos_mapa
+          ORDER BY id_colocacion_icono ASC, orden ASC, id ASC
+        `
+      )
+      .all() as MapIconPlacementImageRow[];
+    const imagesByPlacement = new Map<number, MapIconPlacementImageRow[]>();
 
-    return rows.map((row) => ({
-      id: row.id,
-      dayId: row.id_dia,
-      libraryIconId: row.id_icono_biblioteca,
-      trajectoryIdentifier: row.identificador_trayectoria,
-      posXPct: row.pos_x_pct,
-      posYPct: row.pos_y_pct,
-      tituloContenido: row.titulo_contenido,
-      textoDescriptivo: row.texto_descriptivo,
-      rutaImagenLocal: row.ruta_imagen_local,
-      rutaVideoLocal: row.ruta_video_local,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at
-    }));
+    for (const image of imageRows) {
+      const placementImages = imagesByPlacement.get(image.id_colocacion_icono) ?? [];
+      placementImages.push(image);
+      imagesByPlacement.set(image.id_colocacion_icono, placementImages);
+    }
+
+    return rows.map((row) => {
+      const images = imagesByPlacement.get(row.id) ?? [];
+
+      return {
+        id: row.id,
+        dayId: row.id_dia,
+        libraryIconId: row.id_icono_biblioteca,
+        trajectoryIdentifier: row.identificador_trayectoria,
+        posXPct: row.pos_x_pct,
+        posYPct: row.pos_y_pct,
+        tituloContenido: row.titulo_contenido,
+        textoDescriptivo: row.texto_descriptivo,
+        rutaImagenLocal: images[0]?.ruta_imagen_local ?? row.ruta_imagen_local,
+        rutaVideoLocal: row.ruta_video_local,
+        imagenes: images.map((image) => ({
+          id: image.id,
+          placementId: image.id_colocacion_icono,
+          order: image.orden,
+          rutaImagenLocal: image.ruta_imagen_local,
+          createdAt: image.created_at,
+          updatedAt: image.updated_at
+        })),
+        createdAt: row.created_at,
+        updatedAt: row.updated_at
+      };
+    });
   },
   create: (dayId: number, libraryIconId: number, posXPct: number, posYPct: number): void => {
     const db = getDatabase();
@@ -77,17 +114,39 @@ export const mapIconPlacementRepository = {
     trajectoryIdentifier: number,
     tituloContenido: string | null,
     textoDescriptivo: string | null,
-    rutaImagenLocal: string | null,
+    rutasImagenesLocales: string[],
     rutaVideoLocal: string | null
   ): void => {
     const db = getDatabase();
-    db.prepare(
-      `
-        UPDATE iconos_mapa
-        SET identificador_trayectoria = ?, titulo_contenido = ?, texto_descriptivo = ?, ruta_imagen_local = ?, ruta_video_local = ?, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-      `
-    ).run(trajectoryIdentifier, tituloContenido, textoDescriptivo, rutaImagenLocal, rutaVideoLocal, placementId);
+    const updateContent = db.transaction(() => {
+      db.prepare(
+        `
+          UPDATE iconos_mapa
+          SET identificador_trayectoria = ?, titulo_contenido = ?, texto_descriptivo = ?, ruta_imagen_local = ?, ruta_video_local = ?, updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `
+      ).run(
+        trajectoryIdentifier,
+        tituloContenido,
+        textoDescriptivo,
+        rutasImagenesLocales[0] ?? null,
+        rutaVideoLocal,
+        placementId
+      );
+      db.prepare("DELETE FROM imagenes_iconos_mapa WHERE id_colocacion_icono = ?").run(placementId);
+      const insertImage = db.prepare(
+        `
+          INSERT INTO imagenes_iconos_mapa (id_colocacion_icono, ruta_imagen_local, orden)
+          VALUES (?, ?, ?)
+        `
+      );
+
+      rutasImagenesLocales.forEach((rutaImagenLocal, order) => {
+        insertImage.run(placementId, rutaImagenLocal, order);
+      });
+    });
+
+    updateContent();
   },
   remove: (placementId: number): void => {
     const db = getDatabase();

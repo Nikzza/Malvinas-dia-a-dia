@@ -1,4 +1,4 @@
-# Malvinas Dia a Dia
+# Mapa de Eventos Malvinas
 
 Aplicacion interactiva offline para el Museo Malvinas Argentinas de San Carlos de Bariloche.
 
@@ -87,7 +87,7 @@ Permite:
 - cargar una biblioteca de iconos PNG
 - arrastrar iconos al mapa
 - mover o borrar iconos colocados
-- asociar a cada icono contenido de tipo `texto`, `imagen` o `video`
+- asociar a cada icono texto, un video y multiples imagenes ordenadas en carrusel
 
 ### Modo visualizacion
 
@@ -98,6 +98,7 @@ Permite:
 - hacer zoom sobre el mapa
 - mover el mapa cuando esta ampliado
 - ver los iconos colocados
+- recorrer con flechas el carrusel de imagenes de cada icono
 
 No permite:
 
@@ -127,10 +128,10 @@ Los recursos cargados se copian a esta carpeta con identificadores de integridad
 
 Desde la pantalla `Perfiles` se puede:
 
-- `Exportar Perfiles`: crea un archivo `.malvinas` con todos los perfiles, mapas y recursos completos.
+- `Exportar Perfiles`: crea un archivo `.mape` con todos los perfiles, mapas y recursos completos.
 - `Importar Perfiles`: agrega los perfiles de una copia a los existentes sin reemplazarlos.
 
-Una instalacion nueva comienza sin perfiles. La carpeta local de datos y los archivos `.malvinas` estan excluidos de Git.
+Una instalacion nueva comienza sin perfiles. La carpeta local de datos y los archivos `.mape` estan excluidos de Git.
 
 ## Estructura general
 

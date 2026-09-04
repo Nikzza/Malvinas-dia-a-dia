@@ -311,13 +311,20 @@ function enrichMapPlacementsByDay(placements: MapIconPlacement[], icons: DayIcon
 
   return placements.reduce<Record<number, MapIconPlacement[]>>((accumulator, placement) => {
     const libraryIcon = iconsById.get(placement.libraryIconId);
+    const images = placement.imagenes.map((image) => ({
+      ...image,
+      imagenDataUrl: getManagedResourceUrl(image.rutaImagenLocal),
+      imagenEstado: getManagedResourceStatus(image.rutaImagenLocal)
+    }));
+    const firstImage = images[0];
     const item = {
       ...placement,
       nombreIcono: libraryIcon?.nombre,
       iconoDataUrl: getManagedResourceUrl(libraryIcon?.rutaIconoLocal ?? null),
-      imagenDataUrl: getManagedResourceUrl(placement.rutaImagenLocal ?? null),
+      imagenes: images,
+      imagenDataUrl: firstImage?.imagenDataUrl ?? null,
       videoDataUrl: getManagedResourceUrl(placement.rutaVideoLocal ?? null),
-      imagenEstado: getManagedResourceStatus(placement.rutaImagenLocal),
+      imagenEstado: firstImage?.imagenEstado ?? "empty",
       videoEstado: getManagedResourceStatus(placement.rutaVideoLocal)
     };
 
@@ -383,7 +390,7 @@ function getBootstrapData(profileId: string) {
     );
 
   return {
-    appName: "Malvinas dia por dia",
+    appName: "Mapa de Eventos",
     databasePath: info.databasePath,
     dataDirectory: info.dataDirectory,
     days: enrichDays(days),
@@ -459,11 +466,11 @@ function registerIpcHandlers() {
   });
   ipcMain.handle("profiles:export", async () => {
     await migrateLegacyResources();
-    const defaultName = `Perfiles-Malvinas-${new Date().toISOString().slice(0, 10)}.malvinas`;
+    const defaultName = `Perfiles-Malvinas-${new Date().toISOString().slice(0, 10)}.mape`;
     const result = await dialog.showSaveDialog({
       title: "Exportar perfiles",
       defaultPath: path.join(app.getPath("documents"), defaultName),
-      filters: [{ name: "Copia de perfiles Malvinas", extensions: ["malvinas"] }]
+      filters: [{ name: "Copia de perfiles Mapa de Eventos", extensions: ["mape"] }]
     });
 
     if (result.canceled || !result.filePath) {
@@ -477,11 +484,15 @@ function registerIpcHandlers() {
     const result = await dialog.showOpenDialog({
       title: "Importar perfiles",
       properties: ["openFile"],
-      filters: [{ name: "Copia de perfiles Malvinas", extensions: ["malvinas"] }]
+      filters: [{ name: "Copia de perfiles Mapa de Eventos", extensions: ["mape"] }]
     });
 
     if (result.canceled || !result.filePaths[0]) {
       return { canceled: true as const };
+    }
+
+    if (path.extname(result.filePaths[0]).toLowerCase() !== ".mape") {
+      throw new Error("El archivo seleccionado debe tener extension .mape.");
     }
 
     const imported = await importProfilesBackup(result.filePaths[0]);
@@ -705,7 +716,12 @@ function registerIpcHandlers() {
     return getBootstrapData(profileId);
   });
   ipcMain.handle("map-icons:update-content", async (_event, payload: UpdateMapIconPlacementContentPayload, profileId: string) => {
-    if (payload.rutaImagenLocal && !isAllowedContentResource(payload.rutaImagenLocal, "imagen")) {
+    if (
+      !Array.isArray(payload.rutasImagenesLocales) ||
+      payload.rutasImagenesLocales.some(
+        (imagePath) => typeof imagePath !== "string" || !isAllowedContentResource(imagePath, "imagen")
+      )
+    ) {
       throw new Error("El archivo seleccionado no es una imagen valida.");
     }
 
@@ -750,11 +766,25 @@ function registerIpcHandlers() {
 
       return importManagedResource(selectedPath, kind);
     };
-    const managedImagePath = await persistResource(
-      payload.rutaImagenLocal,
-      currentPlacement.rutaImagenLocal,
-      "image"
+    const currentImagePaths = new Set(currentPlacement.imagenes.map((image) => image.rutaImagenLocal));
+    const uniqueImagePaths = payload.rutasImagenesLocales.filter(
+      (imagePath, index, paths) => paths.indexOf(imagePath) === index
     );
+    const managedImagePaths: string[] = [];
+
+    for (const imagePath of uniqueImagePaths) {
+      let managedImagePath: string;
+
+      if (currentImagePaths.has(imagePath) && getManagedResourceStatus(imagePath) !== "available") {
+        managedImagePath = imagePath;
+      } else {
+        managedImagePath = await importManagedResource(imagePath, "image");
+      }
+
+      if (!managedImagePaths.includes(managedImagePath)) {
+        managedImagePaths.push(managedImagePath);
+      }
+    }
     const managedVideoPath = await persistResource(
       payload.rutaVideoLocal,
       currentPlacement.rutaVideoLocal,
@@ -766,7 +796,7 @@ function registerIpcHandlers() {
       payload.trajectoryIdentifier,
       payload.tituloContenido,
       payload.textoDescriptivo,
-      managedImagePath,
+      managedImagePaths,
       managedVideoPath
     );
     return getBootstrapData(profileId);
@@ -775,25 +805,25 @@ function registerIpcHandlers() {
     const dialogConfig = getResourceDialogConfig(payload.tipoContenido);
     const result = await dialog.showOpenDialog({
       title: dialogConfig.title,
-      properties: ["openFile"],
+      properties: payload.tipoContenido === "imagen" ? ["openFile", "multiSelections"] : ["openFile"],
       filters: dialogConfig.filters
     });
 
     if (result.canceled) {
-      return null;
+      return [];
     }
 
-    const selectedPath = result.filePaths[0] ?? null;
+    const selectedPaths = payload.tipoContenido === "imagen" ? result.filePaths : result.filePaths.slice(0, 1);
 
-    if (!selectedPath) {
-      return null;
+    if (!selectedPaths.length) {
+      return [];
     }
 
-    if (!isAllowedContentResource(selectedPath, payload.tipoContenido)) {
+    if (selectedPaths.some((selectedPath) => !isAllowedContentResource(selectedPath, payload.tipoContenido))) {
       throw new Error(`El archivo seleccionado no es valido para ${payload.tipoContenido}.`);
     }
 
-    return selectedPath;
+    return selectedPaths;
   });
 }
 

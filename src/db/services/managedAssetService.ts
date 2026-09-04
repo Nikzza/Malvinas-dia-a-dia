@@ -236,6 +236,7 @@ export async function migrateLegacyResources() {
   collect("eventos", "ruta_recurso_local", "resource");
   collect("iconos_dia", "ruta_icono_local", "icon");
   collect("iconos_mapa", "ruta_imagen_local", "image");
+  collect("imagenes_iconos_mapa", "ruta_imagen_local", "image");
   collect("iconos_mapa", "ruta_video_local", "video");
 
   const importedPaths = new Map<string, string>();

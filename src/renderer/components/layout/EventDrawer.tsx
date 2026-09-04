@@ -20,7 +20,7 @@ export function EventDrawer({ days, activeDayId, isEditable, onSelectDay }: Even
   return (
     <div className="event-drawer-shell">
       <div className={isOpen ? "event-drawer-rail open" : "event-drawer-rail"}>
-        <aside className="event-drawer-panel" aria-label="Eventos destacados">
+        <aside className="event-drawer-panel" aria-label="Destacados">
           {featuredDays.length ? (
             <div className="event-drawer-list">
               {featuredDays.map((day, index) => (
@@ -38,7 +38,7 @@ export function EventDrawer({ days, activeDayId, isEditable, onSelectDay }: Even
           ) : (
             <p className="event-drawer-empty">
               {isEditable
-                ? "Marca un dia con la estrella en la barra superior para agregarlo a este panel."
+                ? "Marca un evento con la estrella en la barra inferior para agregarlo a este panel."
                 : "No hay eventos destacados cargados."}
             </p>
           )}
@@ -46,7 +46,7 @@ export function EventDrawer({ days, activeDayId, isEditable, onSelectDay }: Even
 
         <button
           aria-expanded={isOpen}
-          aria-label={isOpen ? "Cerrar menu de eventos" : "Abrir menu de eventos"}
+          aria-label={isOpen ? "Cerrar menu de destacados" : "Abrir menu de destacados"}
           className={isOpen ? "event-drawer-handle open" : "event-drawer-handle"}
           onClick={() => setIsOpen((current) => !current)}
           type="button"
@@ -54,7 +54,7 @@ export function EventDrawer({ days, activeDayId, isEditable, onSelectDay }: Even
           <span className="event-drawer-handle-arrow" aria-hidden="true">
             {isOpen ? "<" : ">"}
           </span>
-          <span className="event-drawer-handle-text">Eventos</span>
+          <span className="event-drawer-handle-text">Destacados</span>
         </button>
       </div>
     </div>

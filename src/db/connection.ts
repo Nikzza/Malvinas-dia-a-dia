@@ -349,6 +349,31 @@ function runCompatibilityMigrations(db: Database.Database) {
   `);
   ensureColumn(db, "transiciones_iconos_mapa", "velocidades_json", "TEXT NOT NULL DEFAULT '[]'");
   ensureIconCascadeDelete(db);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS imagenes_iconos_mapa (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id_colocacion_icono INTEGER NOT NULL,
+      ruta_imagen_local TEXT NOT NULL,
+      orden INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (id_colocacion_icono) REFERENCES iconos_mapa(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_imagenes_iconos_mapa_colocacion_orden
+      ON imagenes_iconos_mapa(id_colocacion_icono, orden, id);
+
+    INSERT INTO imagenes_iconos_mapa (id_colocacion_icono, ruta_imagen_local, orden)
+    SELECT id, ruta_imagen_local, 0
+    FROM iconos_mapa
+    WHERE ruta_imagen_local IS NOT NULL
+      AND ruta_imagen_local <> ''
+      AND NOT EXISTS (
+        SELECT 1
+        FROM imagenes_iconos_mapa
+        WHERE imagenes_iconos_mapa.id_colocacion_icono = iconos_mapa.id
+      );
+  `);
   ensureTrajectoryIdentifiers(db);
 }
 

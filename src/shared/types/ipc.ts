@@ -124,7 +124,7 @@ export type UpdateMapIconPlacementContentPayload = {
   trajectoryIdentifier: number;
   tituloContenido: string | null;
   textoDescriptivo: string | null;
-  rutaImagenLocal: string | null;
+  rutasImagenesLocales: string[];
   rutaVideoLocal: string | null;
 };
 
