@@ -22,6 +22,7 @@ import type {
   UpdateMapLabelContentPayload,
   UpdateMapLabelPositionPayload,
   UpdateDayMapViewPayload,
+  UpdateFeaturedDayTitlePayload,
   UpdateDayPayload
 } from "../shared/types/ipc";
 import type { MalvinasProfile } from "../shared/types/profile";
@@ -38,6 +39,7 @@ declare global {
       createDay: (payload: CreateDayPayload) => Promise<BootstrapData>;
       deleteDay: (dayId: number) => Promise<BootstrapData>;
       updateDay: (payload: UpdateDayPayload) => Promise<BootstrapData>;
+      updateFeaturedDayTitle: (payload: UpdateFeaturedDayTitlePayload) => Promise<BootstrapData>;
       moveDay: (payload: MoveDayPayload) => Promise<BootstrapData>;
       updateDayMapView: (payload: UpdateDayMapViewPayload) => Promise<BootstrapData>;
       selectIconPng: () => Promise<string | null>;

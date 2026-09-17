@@ -4,6 +4,7 @@ import type { Day } from "../../shared/types/day";
 type DayRow = {
   id: number;
   etiqueta_fecha: string;
+  titulo_destacado: string | null;
   es_evento_destacado: number;
   ruta_imagen_fondo: string | null;
   vista_centro_lng: number | null;
@@ -25,7 +26,7 @@ export const dayRepository = {
     const rows = db
       .prepare(
         `
-          SELECT id, etiqueta_fecha, es_evento_destacado, ruta_imagen_fondo, vista_centro_lng, vista_centro_lat, vista_zoom, vista_velocidad, orden, created_at, updated_at
+          SELECT id, etiqueta_fecha, titulo_destacado, es_evento_destacado, ruta_imagen_fondo, vista_centro_lng, vista_centro_lat, vista_zoom, vista_velocidad, orden, created_at, updated_at
           FROM dias
           WHERE perfil_id = ?
           ORDER BY orden ASC, id ASC
@@ -36,6 +37,7 @@ export const dayRepository = {
     return rows.map((row) => ({
       id: row.id,
       etiquetaFecha: row.etiqueta_fecha,
+      tituloDestacado: row.titulo_destacado,
       esEventoDestacado: Boolean(row.es_evento_destacado),
       rutaImagenFondo: row.ruta_imagen_fondo,
       initialMapLongitude: row.vista_centro_lng,
@@ -65,7 +67,7 @@ export const dayRepository = {
     const created = db
       .prepare(
         `
-          SELECT id, etiqueta_fecha, es_evento_destacado, ruta_imagen_fondo, vista_centro_lng, vista_centro_lat, vista_zoom, vista_velocidad, orden, created_at, updated_at
+          SELECT id, etiqueta_fecha, titulo_destacado, es_evento_destacado, ruta_imagen_fondo, vista_centro_lng, vista_centro_lat, vista_zoom, vista_velocidad, orden, created_at, updated_at
           FROM dias
           WHERE id = ?
         `
@@ -75,6 +77,7 @@ export const dayRepository = {
     return {
       id: created.id,
       etiquetaFecha: created.etiqueta_fecha,
+      tituloDestacado: created.titulo_destacado,
       esEventoDestacado: Boolean(created.es_evento_destacado),
       rutaImagenFondo: created.ruta_imagen_fondo,
       initialMapLongitude: created.vista_centro_lng,
@@ -125,6 +128,22 @@ export const dayRepository = {
         WHERE id = ?
       `
     ).run(etiquetaFecha.trim(), esEventoDestacado ? 1 : 0, id);
+  },
+  updateFeaturedTitle: (profileId: string, dayId: number, title: string): void => {
+    const normalizedTitle = title.trim();
+
+    if (!normalizedTitle) {
+      throw new Error("El destacado necesita un titulo.");
+    }
+
+    const result = getDatabase().prepare(`
+      UPDATE dias SET titulo_destacado = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND perfil_id = ? AND es_evento_destacado = 1
+    `).run(normalizedTitle, dayId, profileId);
+
+    if (!result.changes) {
+      throw new Error("No se encontro el destacado en el perfil activo.");
+    }
   },
   updateMapView: (
     id: number,

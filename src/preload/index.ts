@@ -21,6 +21,7 @@ import type {
   UpdateMapLabelContentPayload,
   UpdateMapLabelPositionPayload,
   UpdateDayMapViewPayload,
+  UpdateFeaturedDayTitlePayload,
   UpdateDayPayload
 } from "../shared/types/ipc";
 import type { MalvinasProfile } from "../shared/types/profile";
@@ -50,6 +51,8 @@ const api = {
   createDay: (payload: CreateDayPayload) => ipcRenderer.invoke("days:create", payload, requireActiveProfileId()),
   deleteDay: (dayId: number) => ipcRenderer.invoke("days:delete", dayId, requireActiveProfileId()) as Promise<BootstrapData>,
   updateDay: (payload: UpdateDayPayload) => ipcRenderer.invoke("days:update", payload, requireActiveProfileId()) as Promise<BootstrapData>,
+  updateFeaturedDayTitle: (payload: UpdateFeaturedDayTitlePayload) =>
+    ipcRenderer.invoke("days:update-featured-title", payload, requireActiveProfileId()) as Promise<BootstrapData>,
   moveDay: (payload: MoveDayPayload) =>
     ipcRenderer.invoke("days:move", payload, requireActiveProfileId()) as Promise<BootstrapData>,
   updateDayMapView: (payload: UpdateDayMapViewPayload) =>

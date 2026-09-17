@@ -282,6 +282,7 @@ function runCompatibilityMigrations(db: Database.Database) {
   `);
   ensureColumn(db, "dias", "perfil_id", "TEXT");
   ensureColumn(db, "dias", "es_evento_destacado", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn(db, "dias", "titulo_destacado", "TEXT");
   ensureColumn(db, "dias", "vista_centro_lng", "REAL");
   ensureColumn(db, "dias", "vista_centro_lat", "REAL");
   ensureColumn(db, "dias", "vista_zoom", "REAL");

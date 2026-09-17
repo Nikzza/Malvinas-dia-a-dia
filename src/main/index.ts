@@ -48,6 +48,7 @@ import type {
   UpdateMapLabelContentPayload,
   UpdateMapLabelPositionPayload,
   UpdateDayMapViewPayload,
+  UpdateFeaturedDayTitlePayload,
   UpdateDayPayload
 } from "../shared/types/ipc";
 
@@ -520,6 +521,14 @@ function registerIpcHandlers() {
     }
 
     dayRepository.update(payload.id, etiquetaFecha, Boolean(payload.esEventoDestacado));
+    return getBootstrapData(profileId);
+  });
+  ipcMain.handle("days:update-featured-title", async (_event, payload: UpdateFeaturedDayTitlePayload, profileId: string) => {
+    if (!payload || !Number.isInteger(payload.dayId) || typeof payload.title !== "string" || !profileId?.trim()) {
+      throw new Error("Los datos del destacado no son validos.");
+    }
+
+    dayRepository.updateFeaturedTitle(profileId, payload.dayId, payload.title);
     return getBootstrapData(profileId);
   });
   ipcMain.handle("days:move", async (_event, payload: MoveDayPayload, profileId: string) => {

@@ -158,6 +158,17 @@ function profileFromForm(form: ProfileFormState, existingProfile?: MalvinasProfi
   };
 }
 
+function parseMapCoordinate(value: string, limit: number): number | null {
+  const normalized = value.trim().replace(",", ".");
+
+  if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(normalized)) {
+    return null;
+  }
+
+  const coordinate = Number(normalized);
+  return Number.isFinite(coordinate) && Math.abs(coordinate) <= limit ? coordinate : null;
+}
+
 export function App() {
   const [data, setData] = useState<BootstrapData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -183,6 +194,8 @@ export function App() {
   const [isSavingDay, setIsSavingDay] = useState(false);
   const [isCreatingDay, setIsCreatingDay] = useState(false);
   const [mapViewSpeed, setMapViewSpeed] = useState(DEFAULT_MAP_VIEW_SPEED);
+  const [mapViewLatitude, setMapViewLatitude] = useState("");
+  const [mapViewLongitude, setMapViewLongitude] = useState("");
   const [isIconsPanelOpen, setIsIconsPanelOpen] = useState(false);
   const [dragLibraryIcon, setDragLibraryIcon] = useState<DayIcon | null>(null);
   const [isLabelsPanelOpen, setIsLabelsPanelOpen] = useState(false);
@@ -346,6 +359,9 @@ export function App() {
   const isEditMode = mode === "edit";
   const isViewMode = mode === "view";
   const isReadOnlyMode = isViewMode;
+  const coordinateLatitude = parseMapCoordinate(mapViewLatitude, 85.05112878);
+  const coordinateLongitude = parseMapCoordinate(mapViewLongitude, 180);
+  const canGoToCoordinates = Boolean(activeDay) && coordinateLatitude !== null && coordinateLongitude !== null;
   const activeDaySavedView: MapViewState | null =
     activeDay &&
     activeDay.initialMapLongitude !== null &&
@@ -364,6 +380,11 @@ export function App() {
   useEffect(() => {
     setMapViewSpeed(activeDay?.initialMapSpeed ?? DEFAULT_MAP_VIEW_SPEED);
   }, [activeDay?.id, activeDay?.initialMapSpeed]);
+
+  useEffect(() => {
+    setMapViewLatitude("");
+    setMapViewLongitude("");
+  }, [activeProfileId, activeDayId]);
 
   useLayoutEffect(() => {
     const panel = drawingPanelRef.current;
@@ -418,13 +439,13 @@ export function App() {
       return;
     }
 
+    const imageCount = selectedPlacement.imagenes.filter((image) => image.imagenDataUrl).length;
+
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         setSelectedPlacement(null);
         return;
       }
-
-      const imageCount = selectedPlacement.imagenes.filter((image) => image.imagenDataUrl).length;
 
       if (imageCount > 1 && event.key === "ArrowLeft") {
         event.preventDefault();
@@ -629,6 +650,11 @@ export function App() {
     }
   }
 
+  async function handleUpdateFeaturedTitle(dayId: number, title: string) {
+    const nextData = await window.mapaMalvinas.updateFeaturedDayTitle({ dayId, title });
+    setData(nextData);
+  }
+
   async function handleMoveDay(dayId: number, direction: -1 | 1) {
     if (isSavingDay) {
       return;
@@ -675,6 +701,29 @@ export function App() {
       const message = cause instanceof Error ? cause.message : "No se pudo guardar la vista inicial.";
       setError(message);
     }
+  }
+
+  function handleGoToCoordinates(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!activeDay || coordinateLatitude === null || coordinateLongitude === null) {
+      return;
+    }
+
+    const map = mapCanvasRef.current;
+    const currentView = map?.getCurrentView();
+
+    if (!map || !currentView) {
+      setError("El mapa todavia no esta listo para cambiar la vista.");
+      return;
+    }
+
+    map.goToView({
+      latitude: coordinateLatitude,
+      longitude: coordinateLongitude,
+      zoom: currentView.zoom
+    }, mapViewSpeed);
+    setError(null);
   }
 
   function handleGoToSavedDayView() {
@@ -1965,9 +2014,11 @@ export function App() {
         onUpdateDay={handleUpdateDay}
       />
       <EventDrawer
+        key={activeProfileId}
         activeDayId={activeDayId}
         days={data?.days ?? []}
         isEditable={isEditMode}
+        onUpdateFeaturedTitle={handleUpdateFeaturedTitle}
         onSelectDay={handleSelectDay}
       />
       <div className="topbar-actions">
@@ -2309,10 +2360,39 @@ export function App() {
             </button>
           </div>
 
-          <div className={activeDaySavedView ? "map-view-status saved" : "map-view-status"}>
-            <span>{activeDay?.etiquetaFecha ?? "Sin dia activo"}</span>
-            <strong>{activeDaySavedView ? "Vista guardada" : "Sin vista guardada"}</strong>
-          </div>
+          <form className="map-view-coordinates" onSubmit={handleGoToCoordinates}>
+            <div className="map-view-coordinate-fields">
+              <label>
+                <span>Latitud</span>
+                <input
+                  aria-invalid={mapViewLatitude.trim() !== "" && coordinateLatitude === null}
+                  disabled={!activeDay}
+                  inputMode="decimal"
+                  onChange={(event) => setMapViewLatitude(event.target.value)}
+                  placeholder="0,0"
+                  title="Grados decimales entre -85.05112878 y 85.05112878 (limite del mapa). Sur: negativo."
+                  type="text"
+                  value={mapViewLatitude}
+                />
+              </label>
+              <label>
+                <span>Longitud</span>
+                <input
+                  aria-invalid={mapViewLongitude.trim() !== "" && coordinateLongitude === null}
+                  disabled={!activeDay}
+                  inputMode="decimal"
+                  onChange={(event) => setMapViewLongitude(event.target.value)}
+                  placeholder="0,0"
+                  title="Grados decimales entre -180 y 180. Oeste: negativo."
+                  type="text"
+                  value={mapViewLongitude}
+                />
+              </label>
+            </div>
+            <button className="map-view-action-button" disabled={!canGoToCoordinates} type="submit">
+              Ir a vista
+            </button>
+          </form>
 
           <button
             className="map-view-action-button primary"
@@ -2398,6 +2478,7 @@ export function App() {
             ))}
           </div>
 
+          <div className="panel-section-label">Tipo de trazo</div>
           <div className="drawing-style-list">
             <button
               className={drawingTool === "freehand" ? "drawing-style-button active" : "drawing-style-button"}
@@ -2422,6 +2503,16 @@ export function App() {
             >
               <span className="drawing-style-symbol">&#8978;</span>
               Punto A-B curva
+            </button>
+            <button
+              aria-pressed={drawingTool === "circle"}
+              className={drawingTool === "circle" ? "drawing-style-button active" : "drawing-style-button"}
+              onClick={() => setDrawingTool("circle")}
+              title="Arrastra sobre el mapa para definir el tamano del circulo"
+              type="button"
+            >
+              <span aria-hidden="true" className="drawing-style-symbol drawing-style-symbol-circle" />
+              C&#237;rculo
             </button>
           </div>
 
