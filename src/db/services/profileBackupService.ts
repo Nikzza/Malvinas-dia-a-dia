@@ -475,14 +475,15 @@ function insertImportedRows(rows: Awaited<ReturnType<typeof prepareImportedRows>
 
     const insertDay = db.prepare(`
       INSERT INTO dias (
-        perfil_id, etiqueta_fecha, es_evento_destacado, ruta_imagen_fondo,
+        perfil_id, etiqueta_fecha, titulo_destacado, es_evento_destacado, ruta_imagen_fondo,
         vista_centro_lng, vista_centro_lat, vista_zoom, vista_velocidad, orden, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     for (const row of rows.days) {
       const result = insertDay.run(
         profileIdMap.get(String(row.perfil_id)),
         row.etiqueta_fecha,
+        row.titulo_destacado ?? null,
         row.es_evento_destacado,
         row.ruta_imagen_fondo,
         row.vista_centro_lng,

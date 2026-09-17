@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS dias (
   perfil_id TEXT,
   etiqueta_fecha TEXT NOT NULL,
   es_evento_destacado INTEGER NOT NULL DEFAULT 0,
+  titulo_destacado TEXT,
   ruta_imagen_fondo TEXT,
   vista_centro_lng REAL,
   vista_centro_lat REAL,

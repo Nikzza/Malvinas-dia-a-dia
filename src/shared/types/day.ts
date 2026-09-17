@@ -3,6 +3,7 @@ export type DayBackgroundMediaType = "imagen" | "video";
 export type Day = {
   id: number;
   etiquetaFecha: string;
+  tituloDestacado: string | null;
   esEventoDestacado: boolean;
   rutaImagenFondo: string | null;
   initialMapLongitude: number | null;

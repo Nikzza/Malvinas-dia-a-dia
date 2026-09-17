@@ -994,16 +994,98 @@ textarea:focus-visible {
 
 .event-drawer-item {
   display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   min-height: var(--event-drawer-item-height);
-  align-content: center;
+  align-items: center;
   gap: 3px;
   width: 100%;
-  padding: 10px 11px;
+  padding: 0;
   border: 0.5px solid rgba(129, 210, 247, 0.16);
   border-radius: 8px;
   background: rgba(22, 58, 97, 0.18);
   color: rgba(129, 210, 247, 0.74);
   text-align: left;
+}
+
+.event-drawer-select {
+  display: grid;
+  align-content: center;
+  align-self: stretch;
+  gap: 3px;
+  min-width: 0;
+  padding: 10px 11px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.event-drawer-edit {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 30px;
+  margin-right: 8px;
+  padding: 0;
+  border: 0.5px solid rgba(129, 210, 247, 0.28);
+  border-radius: 5px;
+  color: var(--celeste);
+  background: rgba(13, 26, 46, 0.72);
+}
+
+.event-drawer-editor {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px;
+}
+
+.event-drawer-editor label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.event-drawer-editor input {
+  width: 100%;
+  min-width: 0;
+  padding: 7px;
+  border: 0.5px solid rgba(129, 210, 247, 0.28);
+  border-radius: 5px;
+  color: var(--blanco-roto);
+  background: rgba(13, 26, 46, 0.72);
+  font-size: 11px;
+}
+
+.event-drawer-editor-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.event-drawer-editor-actions button {
+  flex: 1;
+  padding: 6px 3px;
+  border: 0.5px solid rgba(129, 210, 247, 0.28);
+  border-radius: 5px;
+  background: rgba(22, 58, 97, 0.32);
+  color: var(--celeste);
+  font-size: 9px;
+}
+
+.event-drawer-editor-actions button:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+.event-drawer-editor-error {
+  margin: 0;
+  color: #e65050;
+  font-size: 10px;
+  overflow-wrap: anywhere;
 }
 
 .event-drawer-item strong {
@@ -1899,36 +1981,6 @@ textarea:focus-visible {
   border-radius: 50%;
 }
 
-.map-view-status {
-  display: grid;
-  gap: 5px;
-  margin-bottom: 10px;
-  padding: 10px;
-  border: 0.5px solid rgba(129, 210, 247, 0.20);
-  border-radius: 8px;
-  background: rgba(22, 58, 97, 0.22);
-}
-
-.map-view-status span {
-  overflow: hidden;
-  color: var(--blanco-roto);
-  font-size: 10px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.map-view-status strong {
-  color: var(--texto-muted);
-  font-size: 8px;
-  font-weight: 600;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.map-view-status.saved strong {
-  color: var(--dorado);
-}
-
 .map-view-action-button {
   width: 100%;
   margin-bottom: 7px;
@@ -1940,6 +1992,52 @@ textarea:focus-visible {
   font-size: 9px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
+}
+
+.map-view-coordinates {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding: 10px;
+  border: 0.5px solid rgba(129, 210, 247, 0.20);
+  border-radius: 8px;
+  background: rgba(22, 58, 97, 0.22);
+}
+
+.map-view-coordinate-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.map-view-coordinate-fields label {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+  color: var(--texto-muted);
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.map-view-coordinate-fields input {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 4px;
+  border: 0.5px solid rgba(129, 210, 247, 0.28);
+  border-radius: 5px;
+  background: rgba(13, 26, 46, 0.72);
+  color: var(--blanco-roto);
+  font-size: 10px;
+  letter-spacing: normal;
+}
+
+.map-view-coordinate-fields input[aria-invalid="true"] {
+  border-color: rgba(219, 80, 80, 0.80);
+}
+
+.map-view-coordinates .map-view-action-button {
+  margin-bottom: 0;
 }
 
 .map-view-action-button.primary {
@@ -2120,6 +2218,21 @@ textarea:focus-visible {
   font-size: 11px;
   letter-spacing: 0.10em;
   text-align: center;
+}
+
+.drawing-style-symbol-circle {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+}
+
+.drawing-style-symbol-circle::before {
+  content: "";
+  width: 9px;
+  height: 9px;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
 }
 
 .drawing-action-button,

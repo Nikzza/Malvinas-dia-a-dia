@@ -2,6 +2,9 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const crypto = require("node:crypto");
+const Database = require("better-sqlite3");
+const tar = require("tar");
 const { app } = require("electron");
 
 app.disableHardwareAcceleration();
@@ -15,6 +18,7 @@ async function run() {
 
   const { getDatabase, initDatabase } = require("../dist-electron/db/connection.js");
   const { profileRepository } = require("../dist-electron/db/repositories/profileRepository.js");
+  const { dayRepository } = require("../dist-electron/db/repositories/dayRepository.js");
   const { mapIconPlacementRepository } = require("../dist-electron/db/repositories/mapIconPlacementRepository.js");
   const { storeManagedBuffer } = require("../dist-electron/db/services/managedAssetService.js");
   const {
@@ -22,8 +26,16 @@ async function run() {
     importProfilesBackup
   } = require("../dist-electron/db/services/profileBackupService.js");
 
+  const legacyDatabaseDirectory = path.join(documentsDirectory, "MapaMalvinas_Data", "database");
+  fs.mkdirSync(legacyDatabaseDirectory, { recursive: true });
+  const legacyDb = new Database(path.join(legacyDatabaseDirectory, "app.db"));
+  const initialSchema = fs.readFileSync(path.join(__dirname, "../src/db/migrations/001_init.sql"), "utf8");
+  legacyDb.exec(initialSchema.replace("  titulo_destacado TEXT,", ""));
+  assert.equal(legacyDb.pragma("table_info(dias)").some((column) => column.name === "titulo_destacado"), false);
+  legacyDb.close();
   initDatabase();
   const db = getDatabase();
+  assert.equal(db.pragma("table_info(dias)").some((column) => column.name === "titulo_destacado"), true);
   assert.equal(profileRepository.list().length, 0);
   const profile = {
     id: "profile-test",
@@ -52,6 +64,16 @@ async function run() {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(profile.id, "2 de abril", 1, -59.5, -51.7, 7, 65, 1).lastInsertRowid
   );
+  assert.equal(dayRepository.list(profile.id)[0].tituloDestacado, null);
+  assert.throws(() => dayRepository.updateFeaturedTitle(profile.id, dayId, "   "));
+  assert.throws(() => dayRepository.updateFeaturedTitle("otro-perfil", dayId, "Otro titulo"));
+  dayRepository.updateFeaturedTitle(profile.id, dayId, "  Desembarco  ");
+  assert.equal(dayRepository.list(profile.id)[0].tituloDestacado, "Desembarco");
+  assert.equal(dayRepository.list(profile.id)[0].etiquetaFecha, "2 de abril");
+  dayRepository.update(dayId, "2 de abril de 1982", false);
+  assert.throws(() => dayRepository.updateFeaturedTitle(profile.id, dayId, "No destacado"));
+  dayRepository.update(dayId, "2 de abril", true);
+  assert.equal(dayRepository.list(profile.id)[0].tituloDestacado, "Desembarco");
   const iconId = Number(
     db.prepare("INSERT INTO iconos_dia (id_dia, nombre, ruta_icono_local) VALUES (?, ?, ?)")
       .run(dayId, "Buque", iconPath).lastInsertRowid
@@ -105,6 +127,10 @@ async function run() {
   const imported = await importProfilesBackup(packagePath);
   assert.equal(imported.importedCount, 1);
   assert.equal(imported.profiles.length, 2);
+  const importedProfile = imported.profiles.find((item) => item.id !== profile.id);
+  assert.equal(dayRepository.list(importedProfile.id)[0].tituloDestacado, "Desembarco");
+  assert.equal(dayRepository.list(importedProfile.id)[0].etiquetaFecha, "2 de abril");
+  assert.equal(dayRepository.list(profile.id)[0].tituloDestacado, "Desembarco");
   assert.equal(db.prepare("SELECT COUNT(*) AS count FROM dias").get().count, 2);
   assert.equal(db.prepare("SELECT COUNT(*) AS count FROM iconos_dia").get().count, 2);
   assert.equal(db.prepare("SELECT COUNT(*) AS count FROM iconos_mapa").get().count, 4);
@@ -138,6 +164,31 @@ async function run() {
   assert.deepEqual(importedImages.map((image) => image.orden), [0, 1]);
   assert.equal(importedImages.every((image) => fs.existsSync(resolveStoredResourcePath(image.ruta_imagen_local))), true);
 
+  // A package from the previous version has no custom-title column.
+  const legacyStage = path.join(testRoot, "legacy-package");
+  fs.mkdirSync(legacyStage);
+  await tar.x({ file: packagePath, cwd: legacyStage });
+  const snapshotPath = path.join(legacyStage, "database", "app.db");
+  const snapshotDb = new Database(snapshotPath);
+  snapshotDb.exec("ALTER TABLE dias DROP COLUMN titulo_destacado");
+  snapshotDb.close();
+  const manifestPath = path.join(legacyStage, "manifest.json");
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+  const databaseEntry = manifest.files.find((file) => file.path === "database/app.db");
+  const databaseBytes = fs.readFileSync(snapshotPath);
+  databaseEntry.size = databaseBytes.length;
+  databaseEntry.sha256 = crypto.createHash("sha256").update(databaseBytes).digest("hex");
+  fs.writeFileSync(manifestPath, JSON.stringify(manifest));
+  const legacyPackagePath = path.join(testRoot, "legacy.mape");
+  await tar.c({ file: legacyPackagePath, cwd: legacyStage }, ["manifest.json", "database", "assets"]);
+  const previousIds = new Set(profileRepository.list().map((item) => item.id));
+  const legacyImport = await importProfilesBackup(legacyPackagePath);
+  const legacyProfile = legacyImport.profiles.find((item) => !previousIds.has(item.id));
+  assert.equal(legacyImport.importedCount, 1);
+  assert.equal(dayRepository.list(legacyProfile.id)[0].tituloDestacado, null);
+  assert.equal(dayRepository.list(legacyProfile.id)[0].etiquetaFecha, "2 de abril");
+  assert.equal(db.pragma("integrity_check", { simple: true }), "ok");
+  console.log("Profile backup, featured titles, migration and legacy import checks passed.");
   db.close();
   fs.rmSync(testRoot, { recursive: true, force: true });
   app.quit();

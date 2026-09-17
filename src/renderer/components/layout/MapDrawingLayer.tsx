@@ -1,13 +1,14 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Circle, Layer, Line, Stage } from "react-konva";
 import type Konva from "konva";
+import { buildCirclePoints } from "./circleGeometry";
 import type {
   MapDrawingLine,
   MapDrawingLineColor,
   MapDrawingLineStyle
 } from "../../../shared/types/mapDrawingLine";
 
-export type MapDrawingTool = "freehand" | "straight" | "curve";
+export type MapDrawingTool = "freehand" | "straight" | "curve" | "circle";
 
 type MapDrawingLayerProps = {
   width: number;
@@ -151,16 +152,16 @@ export function MapDrawingLayer({
   const [curveStartPoint, setCurveStartPoint] = useState<PointPct | null>(null);
   const [curveEndPoint, setCurveEndPoint] = useState<PointPct | null>(null);
   const [previewPoint, setPreviewPoint] = useState<PointPct | null>(null);
+  const circleStartRef = useRef<PointPct | null>(null);
 
   useEffect(() => {
-    if (!isDrawingEnabled) {
-      setCurrentPointsPct([]);
-      setIsPointerDown(false);
-      setCurveStartPoint(null);
-      setCurveEndPoint(null);
-      setPreviewPoint(null);
-    }
-  }, [isDrawingEnabled]);
+    setCurrentPointsPct([]);
+    setIsPointerDown(false);
+    setCurveStartPoint(null);
+    setCurveEndPoint(null);
+    setPreviewPoint(null);
+    circleStartRef.current = null;
+  }, [isDrawingEnabled, drawingTool]);
 
   const renderedCurrentPoints = useMemo(
     () => toCanvasPoints(currentPointsPct, width, height),
@@ -194,6 +195,14 @@ export function MapDrawingLayer({
     const point = getPointerPoint(stage);
 
     if (!point) {
+      return;
+    }
+
+    if (drawingTool === "circle") {
+      if (event.evt.button !== 0) return;
+      circleStartRef.current = point;
+      setCurrentPointsPct([]);
+      setIsPointerDown(true);
       return;
     }
 
@@ -279,10 +288,42 @@ export function MapDrawingLayer({
       return;
     }
 
+    if (drawingTool === "circle") {
+      if (circleStartRef.current) {
+        setCurrentPointsPct(buildCirclePoints(circleStartRef.current, point, width, height));
+      }
+      return;
+    }
+
     setCurrentPointsPct((current) => [...current, point.xPct, point.yPct]);
   }
 
-  async function finishCurrentLine() {
+  async function finishCurrentLine(event: Konva.KonvaEventObject<PointerEvent>) {
+    if (drawingTool === "circle") {
+      const start = circleStartRef.current;
+      circleStartRef.current = null;
+      setIsPointerDown(false);
+      if (!start || !isDrawingEnabled || isSavingLine) return;
+
+      const stage = event.target.getStage();
+      const end = stage ? getPointerPoint(stage) : null;
+      const points = end ? buildCirclePoints(start, end, width, height) : [];
+      if (!points.length) {
+        setCurrentPointsPct([]);
+        return;
+      }
+
+      setCurrentPointsPct(points);
+      setIsSavingLine(true);
+      try {
+        await onCreateLine(points, lineStyle, lineColor);
+      } finally {
+        setCurrentPointsPct([]);
+        setIsSavingLine(false);
+      }
+      return;
+    }
+
     if (!isPointerDown) {
       return;
     }
@@ -346,8 +387,13 @@ export function MapDrawingLayer({
       height={height}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
-      onPointerUp={() => void finishCurrentLine()}
-      onPointerLeave={() => void finishCurrentLine()}
+      onPointerUp={(event) => void finishCurrentLine(event)}
+      onPointerLeave={(event) => void finishCurrentLine(event)}
+      onPointerCancel={() => {
+        circleStartRef.current = null;
+        setIsPointerDown(false);
+        setCurrentPointsPct([]);
+      }}
       width={width}
     >
       <Layer listening={false}>

@@ -43,6 +43,11 @@ export type UpdateDayMapViewPayload = {
   speed: number;
 };
 
+export type UpdateFeaturedDayTitlePayload = {
+  dayId: number;
+  title: string;
+};
+
 export type MoveDayPayload = {
   dayId: number;
   direction: -1 | 1;
